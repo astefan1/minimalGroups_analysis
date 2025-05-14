@@ -1,0 +1,141 @@
+---
+title: "Preprocessing Mini-Meta Analyses"
+author: "Angelika Stefan"
+output: html_document
+---
+
+## Read in datasets
+
+```{r}
+nhb1a <- read.csv('../../data/nhb1a_processed.csv')
+nhb1b <- read.csv('../../data/nhb1b_processed.csv')
+nhb2 <- read.csv('../../data/nhb2_processed.csv')
+nhb3 <- read.csv('../../data/nhb3_processed.csv')
+nhb <- list(nhb1a, nhb1b, nhb2, nhb3)
+```
+
+## Set up meta-analysis data
+
+```{r}
+metadata <- data.frame("study" = NA,
+                       "group" = NA,
+                       "N" = NA,
+                       "cor_BiasIdeology" = NA,
+                       "cor_TraitsIdeology" = NA,
+                       "cor_PointsIdeology" = NA,
+                       "cor_IdentifyIdeology" = NA,
+                       "cor_BiasSelfReportedIdeology" = NA,
+                       "cor_TraitsSelfReportedIdeology" = NA,
+                       "cor_PointsSelfReportedIdeology" = NA,
+                       "cor_IdentifySelfReportedIdeology" = NA,
+                       "cor_BiasIssueBasedIdeology" = NA,
+                       "cor_TraitsIssueBasedIdeology" = NA,
+                       "cor_PointsIssueBasedIdeology" = NA,
+                       "cor_IdentifyIssueBasedIdeology" = NA)
+```
+
+## Add data Study 1a
+
+```{r}
+# Compute self-reported ideology
+nhb1a$ideology_SR <- rowMeans(nhb1a[, c("PolOrient", "SocOrient", "EconOrient")])
+# Add correlations
+metadata[1,] <- c("1a", "Prolific", nrow(nhb1a), 
+                  cor(nhb1a$mean_intergroup_bias, nhb1a$composite_political_orientation),
+                  cor(nhb1a$ingroup_minus_outgroup_traits_positive, nhb1a$composite_political_orientation),
+                  cor(nhb1a$total_ingroup_minus_outgroup_points, nhb1a$composite_political_orientation),
+                  cor(nhb1a$ingroup_minus_outgroup_identify, nhb1a$composite_political_orientation),
+                  cor(nhb1a$mean_intergroup_bias, nhb1a$ideology_SR),
+                  cor(nhb1a$ingroup_minus_outgroup_traits_positive, nhb1a$ideology_SR),
+                  cor(nhb1a$total_ingroup_minus_outgroup_points, nhb1a$ideology_SR),
+                  cor(nhb1a$ingroup_minus_outgroup_identify, nhb1a$ideology_SR),
+                  cor(nhb1a$mean_intergroup_bias, nhb1a$mean_SECS),
+                  cor(nhb1a$ingroup_minus_outgroup_traits_positive, nhb1a$mean_SECS),
+                  cor(nhb1a$total_ingroup_minus_outgroup_points, nhb1a$mean_SECS),
+                  cor(nhb1a$ingroup_minus_outgroup_identify, nhb1a$mean_SECS))
+```
+
+## Add data Study 1b
+
+```{r}
+# Compute self-reported ideology
+nhb1b$ideology_SR <- rowMeans(nhb1b[, c("PolOrient", "SocOrient", "EconOrient")])
+
+metadata[2,] <- c("1b", "MTurk", nrow(nhb1b), 
+                  cor(nhb1b$mean_intergroup_bias, nhb1b$composite_political_orientation),
+                  cor(nhb1b$ingroup_minus_outgroup_traits_positive, nhb1b$composite_political_orientation, use = "complete.obs"),
+                  cor(nhb1b$total_ingroup_minus_outgroup_points, nhb1b$composite_political_orientation, use = "complete.obs"),
+                  cor(nhb1b$ingroup_minus_outgroup_identify, nhb1b$composite_political_orientation, use = "complete.obs"),
+                  cor(nhb1b$mean_intergroup_bias, nhb1b$ideology_SR, use = "complete.obs"),
+                  cor(nhb1b$ingroup_minus_outgroup_traits_positive, nhb1b$ideology_SR, use = "complete.obs"),
+                  cor(nhb1b$total_ingroup_minus_outgroup_points, nhb1b$ideology_SR, use = "complete.obs"),
+                  cor(nhb1b$ingroup_minus_outgroup_identify, nhb1b$ideology_SR, use = "complete.obs"),
+                  cor(nhb1b$mean_intergroup_bias, nhb1b$mean_SECS, use = "complete.obs"),
+                  cor(nhb1b$ingroup_minus_outgroup_traits_positive, nhb1b$mean_SECS, use = "complete.obs"),
+                  cor(nhb1b$total_ingroup_minus_outgroup_points, nhb1b$mean_SECS, use = "complete.obs"),
+                  cor(nhb1b$ingroup_minus_outgroup_identify, nhb1b$mean_SECS, use = "complete.obs"))
+```
+
+## Add data Study 2
+
+```{r}
+condition <- unique(nhb2$condition)
+nhb2$ideology_SR <- rowMeans(nhb2[, c("PolOrient", "SocOrient", "EconOrient")])
+
+for(i in 1:length(condition)){
+  dat <- nhb2[nhb2$condition == condition[i],]
+  metadata[2+i, ] <- c("2", condition[i], 
+                       nrow(dat),
+                       cor(dat$mean_intergroup_bias, dat$composite_political_orientation),
+                       cor(dat$ingroup_minus_outgroup_traits_positive, dat$composite_political_orientation, use = "complete.obs"),
+                       cor(dat$total_ingroup_minus_outgroup_points, dat$composite_political_orientation),
+                       cor(dat$ingroup_minus_outgroup_identify, dat$composite_political_orientation),
+                      cor(dat$mean_intergroup_bias, dat$ideology_SR, use = "complete.obs"),
+                      cor(dat$ingroup_minus_outgroup_traits_positive, dat$ideology_SR, use = "complete.obs"),
+                      cor(dat$total_ingroup_minus_outgroup_points, dat$ideology_SR, use = "complete.obs"),
+                      cor(dat$ingroup_minus_outgroup_identify, dat$ideology_SR, use = "complete.obs"),
+                      cor(dat$mean_intergroup_bias, dat$mean_SECS, use = "complete.obs"),
+                      cor(dat$ingroup_minus_outgroup_traits_positive, dat$mean_SECS, use = "complete.obs"),
+                      cor(dat$total_ingroup_minus_outgroup_points, dat$mean_SECS, use = "complete.obs"),
+                      cor(dat$ingroup_minus_outgroup_identify, dat$mean_SECS, use = "complete.obs"))
+}
+```
+
+## Add data Study 3
+
+```{r}
+condition <- unique(nhb3$condition)
+
+nhb3$ideology_SR <- rowMeans(nhb3[, c("PolOrient", "SocOrient", "EconOrient")])
+
+for(i in 1:length(condition)){
+  dat <- nhb3[nhb3$condition == condition[i],]
+  metadata[5+i, ] <- c("3", condition[i], nrow(dat),
+                       cor(dat$mean_intergroup_bias, dat$composite_political_orientation),
+                       cor(dat$ingroup_minus_outgroup_traits_positive, dat$composite_political_orientation, use = "complete.obs"),
+                       cor(dat$total_ingroup_minus_outgroup_points, dat$composite_political_orientation),
+                  cor(dat$ingroup_minus_outgroup_identify, dat$composite_political_orientation),
+                  cor(dat$mean_intergroup_bias, dat$ideology_SR, use = "complete.obs"),
+                      cor(dat$ingroup_minus_outgroup_traits_positive, dat$ideology_SR, use = "complete.obs"),
+                      cor(dat$total_ingroup_minus_outgroup_points, dat$ideology_SR, use = "complete.obs"),
+                      cor(dat$ingroup_minus_outgroup_identify, dat$ideology_SR, use = "complete.obs"),
+                      cor(dat$mean_intergroup_bias, dat$mean_SECS, use = "complete.obs"),
+                      cor(dat$ingroup_minus_outgroup_traits_positive, dat$mean_SECS, use = "complete.obs"),
+                      cor(dat$total_ingroup_minus_outgroup_points, dat$mean_SECS, use = "complete.obs"),
+                      cor(dat$ingroup_minus_outgroup_identify, dat$mean_SECS, use = "complete.obs"))
+}
+```
+
+
+## Save processed data
+
+```{r}
+write.csv(metadata, "../../data/metadata_processed.csv")
+```
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```

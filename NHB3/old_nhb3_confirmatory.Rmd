@@ -1,0 +1,399 @@
+---
+title: "NHB2 - Confirmatory Analyses"
+author: "Youssef Amin and Angelika Stefan"
+date: "2024-06-05"
+output: html_document
+---
+## Load packages
+```{r setup, message=FALSE, warning=FALSE, error = FALSE}
+library(bayestestR)
+library(ggplot2)
+library(brms)
+library(logspline)
+library(emmeans)
+```
+  
+<br>
+<br> 
+
+## Read in data
+```{r read in data}
+# Set seed
+set.seed (987654)
+nhb3 <- read.csv("../../data/nhb3_processed.csv")
+nhb3$condition <- factor(nhb3$condition, 
+                         levels = c("no_interaction", "cooperative", "competitive"),
+                         labels = c("No_Interaction", "Cooperative", "Competitive"))
+```
+  
+  
+  
+<br>
+<br>
+<br>
+
+# Confirmatory Analyses
+
+## Summary
+1. <span style="color:green">Ideology</span> predicts <span style="color:green">intergroup bias</span>. 
+2. <span style="color:red">Group type</span> does <span style ="color:red">not</span> moderate the relationship between <span style="color:red">ideology</span> and <span style="color:red">bias</span>. There is a main effect of the <span style="color:green">Competitive</span> condition.
+  
+  
+  
+  
+<br>
+<br>
+
+## Confirmatory 1: <span style="color:green">Ideology</span> predicts <span style="color:green">bias</span>
+```{r confirmatory 1 formula}
+confirmatory1_formula <- mean_intergroup_bias_z ~ composite_political_orientation_z
+```
+<br> 
+
+### Compute Frequentist
+```{r confirmatory 1 compute frequentist}
+confirmatory1_freqmodel <- lm(confirmatory1_formula, nhb3)
+df_confirm1 <- confirmatory1_freqmodel$df.residual
+t_confirm1 <- summary(confirmatory1_freqmodel)$coefficients[2,]["t value"]
+p_confirm1 <- 1-pt(t_confirm1, df_confirm1)
+```
+<br>
+
+### Compute Bayesian: Default Priors
+```{r confirmatory 1 compute bayesian default, results = 'hide', warning=FALSE, message=FALSE }
+### Define priors for the regression model #REMEMBER TO SET warmup = 5000 and iter = 100000
+confirmatory1_DefaultPriors <- c(set_prior("normal(0, 0.5)", class = "b"))
+
+# Run the regression model
+confirmatory1_bayesmodel_default <- brm(
+  formula = confirmatory1_formula, 
+  data = nhb3, 
+  family = gaussian(),
+  prior = confirmatory1_DefaultPriors,
+  sample_prior = "no",
+  iter = 100000,  # Adjust iterations based on convergence diagnostics
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000
+)
+
+confirmatory1_priordraws_default<- brms::brm(confirmatory1_formula, 
+                            data = nhb3, 
+                            family = "gaussian",
+                            prior = confirmatory1_DefaultPriors,
+                            sample_prior = "only",
+                            seed = 987654,
+                            silent = TRUE,
+                            refresh = 0,
+                            iter = 100000)
+
+confirmatory1_bf_default <- bayesfactor_parameters(confirmatory1_bayesmodel_default,
+                       prior=confirmatory1_priordraws_default, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z")
+```
+
+<br>
+<br>
+
+### Compute Bayesian: Informed Priors
+```{r confirmatory 1 compute bayesian informed, results = 'hide', warning=FALSE, message=FALSE }
+### Define priors for the regression model #REMEMBER TO SET warmup = 5000 and iter = 100000
+confirmatory1_InformedPriors <- c(set_prior("normal(0.15, 0.05)", class = "b"))
+
+# Run the regression model
+confirmatory1_bayesmodel_informed <- brm(
+  formula = confirmatory1_formula, 
+  data = nhb3, 
+  family = gaussian(),
+  prior = confirmatory1_InformedPriors,
+  sample_prior = "no",
+  iter = 100000,  # Adjust iterations based on convergence diagnostics
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000
+)
+
+confirmatory1_priordraws_informed<- brms::brm(confirmatory1_formula, 
+                            data = nhb3, 
+                            family = "gaussian",
+                            prior = confirmatory1_InformedPriors,
+                            sample_prior = "only",
+                            seed = 987654,
+                            silent = TRUE,
+                            refresh = 0,
+                            iter = 100000)
+
+confirmatory1_bf_informed <- bayesfactor_parameters(confirmatory1_bayesmodel_informed,
+                       prior=confirmatory1_priordraws_informed, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z")
+```
+
+
+```{r confirmatory 1 plot, results='hide', echo=FALSE, warning=FALSE, message=FALSE}
+confirmatory1_bf_long <- round(exp(confirmatory1_bf_default$log_BF), 3)
+confirmatory1_beta <- round(confirmatory1_bayesmodel_default[["fit"]]@.MISC[["summary"]]$msd["b_composite_political_orientation_z", "mean"],2)
+confirmatory1_plot <- ggplot(nhb3, aes(x = composite_political_orientation_z, y = mean_intergroup_bias_z, 
+                                       color = composite_political_orientation_z)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", color = "black", linetype = "solid") +
+  scale_color_gradient2(low = "darkblue", mid = "darkgrey", high = "red", midpoint = 0) +
+  labs(
+    x = "Ideology (z-scored)",
+    y = "Minimal Intergroup Bias (z-scored)",
+    title = "Relationship between Ideology and Minimal Intergroup Bias",
+    color = "Ideology"
+  ) +
+  theme_minimal() +
+  annotate("text", x = Inf, y = Inf, 
+           label = 
+             bquote(beta[z] == .(paste(confirmatory1_beta, ",", sep =''))~
+                      'BF'[10] == .(formatC(log10(confirmatory1_bf_long), format = "fg", digits = 3)) %*% 10^.(floor(log10(confirmatory1_bf_long)))),
+           parse = FALSE,
+           hjust = 1.1, vjust = 1.1, size = 5, color = "black") +
+  theme(plot.title = element_text(hjust = 0.5))
+  confirmatory1_plot
+```
+  
+### Confirmatory 1 Results: <span style="color:green">Ideology</span> predicts <span style="color:green">intergroup bias</span>. 
+```{r confirmatory 1 results}
+###FREQUENTIST
+summary(confirmatory1_freqmodel)
+print(paste0("Confirmatory 1 p value is ", p_confirm1))
+confint(confirmatory1_freqmodel)
+
+###BAYESIAN
+##Default
+summary(confirmatory1_bayesmodel_default)
+confirmatory1_bf_default
+
+###Informed
+summary(confirmatory1_bayesmodel_informed)
+confirmatory1_bf_informed
+```
+<br>
+<br>
+
+## Confirmatory 2: <span style="color:red">Group type</span> does **not** moderate relationship between <span style="color:red">ideology</span> and <span style="color:red">bias</span>. There is a main effect of the <span style="color:green">Competitive</span> condition.
+```{r confirmatory 2 formula}
+confirmatory2_formula <- mean_intergroup_bias_z ~ composite_political_orientation_z + condition + composite_political_orientation_z:condition
+```
+<br>
+
+
+
+
+
+
+### Compute Frequentist
+```{r confirmatory 2 compute frequentist}
+confirmatory2_freqmodel <- lm(confirmatory2_formula, data = nhb3)
+df_confirm2 <- confirmatory2_freqmodel$df.residual
+
+t_random <- summary(confirmatory2_freqmodel)$coefficients["composite_political_orientation_z", "t value"]
+
+t_Cooperative_interaction <- summary(confirmatory2_freqmodel)$coefficients["composite_political_orientation_z:conditionCooperative", "t value"]
+
+t_Competitive_interaction <- summary(confirmatory2_freqmodel)$coefficients["composite_political_orientation_z:conditionCompetitive", "t value"]
+
+t_Cooperative_maineffect<- summary(confirmatory2_freqmodel)$coefficients["conditionCooperative", "t value"]
+
+t_Competitive_maineffect <- summary(confirmatory2_freqmodel)$coefficients["conditionCompetitive", "t value"]
+
+# Compute one-sided p-values
+
+p_random <- 1-pt(t_random, df_confirm2)
+
+p_Cooperative_maineffect <- 1-pt(t_Cooperative_maineffect, df_confirm2)
+p_Competitive_maineffect <- 1-pt(t_Competitive_maineffect, df_confirm2)
+
+p_Cooperative_interaction <- 1-pt(t_Cooperative_interaction, df_confirm2)
+p_Competitive_interaction <- 1-pt(t_Competitive_interaction, df_confirm2)
+
+```
+
+<br>
+
+
+
+
+
+### Compute Bayesian: Default Priors
+```{r confirmatory 2 compute bayesian default, results = 'hide', warning=FALSE, message=FALSE }
+priors_list <- get_prior(
+  formula = confirmatory2_formula,
+  data = nhb3,
+  family = gaussian()
+)
+priors_list$coef #use this to get the names of the variables/their format you need to input into modelprios
+
+
+confirmatory2_DefaultPriors <- c(
+  set_prior("normal(0, 0.5)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0, 0.5)", class = "b", coef="conditionCompetitive"),
+  set_prior("normal(0, 0.5)", class = "b", coef="conditionCooperative"),
+  
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:conditionCompetitive"),
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:conditionCooperative")
+)
+
+confirmatory2_bayesmodel_default <- brms::brm(
+  formula = confirmatory2_formula, 
+                  data = nhb3, 
+                  family = "gaussian",
+                  prior = confirmatory2_DefaultPriors,
+                  sample_prior = "no",
+                  iter = 100000,
+                  warmup = 5000,
+                  chains = 4,
+                  seed = 987654)
+
+confirmatory2_priordraws_default <- brms::brm(confirmatory2_formula, 
+                        data = nhb3, 
+                        family = "gaussian",
+                        prior = confirmatory2_DefaultPriors,
+                        sample_prior = "only",
+                        iter = 100000,
+                        seed = 987654)
+
+confirmatory2_bf_default <- bayesfactor_parameters(confirmatory2_bayesmodel_default,
+                       prior=confirmatory2_priordraws_default,
+                       direction = "right")
+
+```
+<br>
+
+### Compute Bayesian: Informed Priors
+```{r confirmatory 2 compute bayesian informed, results = 'hide', warning=FALSE, message=FALSE }
+priors_list <- get_prior(
+  formula = confirmatory2_formula,
+  data = nhb3,
+  family = gaussian()
+)
+priors_list$coef #use this to get the names of the variables/their format you need to input into modelprios
+
+
+confirmatory2_InformedPriors <- c(
+  set_prior("normal(0.15, 0.05)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0.1, 0.5)", class = "b", coef="conditionCompetitive"),
+  set_prior("normal(0.1, 0.5)", class = "b", coef="conditionCooperative"),
+  
+  set_prior("normal(0.1, 0.05)", class = "b", coef="composite_political_orientation_z:conditionCompetitive"),
+  set_prior("normal(0.1, 0.05)", class = "b", coef="composite_political_orientation_z:conditionCooperative")
+)
+
+confirmatory2_bayesmodel_informed <- brms::brm(
+  formula = confirmatory2_formula, 
+                  data = nhb3, 
+                  family = "gaussian",
+                  prior = confirmatory2_InformedPriors,
+                  sample_prior = "no",
+                  iter = 100000,
+                  warmup = 5000,
+                  chains = 4,
+                  seed = 987654)
+
+confirmatory2_priordraws_informed <- brms::brm(confirmatory2_formula, 
+                        data = nhb3, 
+                        family = "gaussian",
+                        prior = confirmatory2_InformedPriors,
+                        sample_prior = "only",
+                        iter = 100000,
+                        seed = 987654)
+
+confirmatory2_bf_informed <- bayesfactor_parameters(confirmatory2_bayesmodel_informed,
+                       prior=confirmatory2_priordraws_informed,
+                       direction = "right")
+
+```
+
+
+<br>
+
+```{r confirmatory 2 plot, echo = FALSE, results='hide', warning=FALSE, message=FALSE}
+posterior <- as_draws_df(confirmatory2_bayesmodel_default)
+beta_random <- mean(posterior$b_composite_political_orientation_z)
+beta_Cooperative <- mean(posterior$`b_composite_political_orientation_z:conditionCooperative`) + beta_random
+beta_Competitive <- mean(posterior$`b_composite_political_orientation_z:conditionCompetitive`) + beta_random
+
+beta_values <- data.frame(
+  condition = c("No_Interaction", "Cooperative", "Competitive"),
+  beta = c(beta_random, beta_Cooperative, beta_Competitive),
+  betalabel = paste0("β[z] == ", round(c(beta_random, beta_Cooperative, beta_Competitive), 2))
+)
+
+
+
+ggplot(nhb3, aes(x = composite_political_orientation_z, 
+                 y = mean_intergroup_bias_z, 
+                 color = composite_political_orientation_z)) +
+  geom_point(alpha = 0.5, size = 1.5) +  # Scatter points
+  geom_smooth(method = "lm", color = "black") +  # Regression lines
+  scale_color_gradient2(low = "darkblue", mid = "darkgray", high = "red", midpoint = 0) +  # Color gradient
+  facet_wrap(~factor(condition, levels =c("No_Interaction", "Cooperative", "Competitive")), nrow = 1) +  # Facet by condition
+  theme_minimal() +
+  labs(
+    title = "Group Condition as Moderator",
+    x = "Ideology (z-scored)",
+    y = "Minimal Intergroup Bias (z-scored)",
+    color = "Ideology"
+  ) +
+  geom_text(data = beta_values, 
+            mapping = aes(x = 0, y = 3.5, label = betalabel),
+            color = "black", parse = TRUE, inherit.aes = FALSE)
+
+```
+
+### Confirmatory 2 Results: <span style="color:red">Group type</span> did <span style ="color:red">not</span> moderate relationship between <span style="color:red">ideology</span> and <span style="color:red">bias</span>. There is a main effect of the <span style="color:green">Competitive</span> condition.
+
+
+```{r confirmatory 2 results}
+###FREQUENTIST
+summary(confirmatory2_freqmodel)
+confint(confirmatory2_freqmodel)
+print(paste0("Confirmatory 2 (Cooperative main effect) p value is ", p_Cooperative_maineffect))
+print(paste0("Confirmatory 2 (Competitive main effect) p value is ", p_Competitive_maineffect))
+
+print(paste0("Confirmatory 2 (Cooperative interaction effect) p value is ", p_Cooperative_interaction))
+print(paste0("Confirmatory 2 (Competitive interaction effect) p value is ", p_Competitive_interaction))
+
+##Simple Slopes (one-sided p-values)
+simpleslopes_freq <- test(emtrends(confirmatory2_freqmodel, "condition", var = "composite_political_orientation_z"))
+cbind(condition = as.character(simpleslopes_freq$condition),
+      pvalue_onesided=1-pt(simpleslopes_freq$t.ratio, df=simpleslopes_freq$df))
+
+###BAYESIAN
+##Default
+summary(confirmatory2_bayesmodel_default)
+confirmatory2_bf_default
+
+##Simple Slopes - Calculation of point estimates and CIs
+hypothesis(confirmatory2_bayesmodel_default, c("composite_political_orientation_z = 0", 
+                                       "composite_political_orientation_z + composite_political_orientation_z:conditionCooperative = 0", 
+                                       "composite_political_orientation_z + composite_political_orientation_z:conditionCompetitive = 0"))
+
+## Simple Slopes - Calculation of one-sided Bayes factors (BF+0)
+simpleslopes_bayes <- emtrends(confirmatory2_bayesmodel_default, "condition", var="composite_political_orientation_z")
+simpleslopes_bayes0 <- emtrends(confirmatory2_priordraws_default, "condition", var="composite_political_orientation_z")
+bayesfactor_parameters(simpleslopes_bayes, prior = simpleslopes_bayes0, direction = "right")
+
+##Informed
+summary(confirmatory2_bayesmodel_informed)
+confirmatory2_bf_informed
+
+##Simple Slopes - Calculation of point estimates and CIs
+hypothesis(confirmatory2_bayesmodel_informed, c("composite_political_orientation_z = 0", 
+                                       "composite_political_orientation_z + composite_political_orientation_z:conditionCooperative = 0", 
+                                       "composite_political_orientation_z + composite_political_orientation_z:conditionCompetitive = 0"))
+
+## Simple Slopes - Calculation of one-sided Bayes factors (BF+0)
+simpleslopes_bayes_inf <- emtrends(confirmatory2_bayesmodel_informed, "condition", var="composite_political_orientation_z")
+simpleslopes_bayes0_inf <- emtrends(confirmatory2_priordraws_informed, "condition", var="composite_political_orientation_z")
+bayesfactor_parameters(simpleslopes_bayes_inf, prior = simpleslopes_bayes0_inf, direction = "right")
+
+```

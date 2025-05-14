@@ -1,0 +1,960 @@
+---
+title: 'Exploratory Analyses NHB1: Ideological Extremity'
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(brms)
+library(bayestestR)
+library(Bayesrel)
+library(knitr)
+```
+
+## Read in and combine data from Prolific and MTurk
+
+```{r}
+# Read in data from both studies
+nhb1a <- read.csv('../../data/nhb1a_processed.csv')
+nhb1b <- read.csv('../../data/nhb1b_processed.csv')
+
+nhb1a$platform <- "Prolific"
+nhb1b$platform <- "MTurk"
+
+# Combine data
+nhb1 <- rbind(nhb1a, nhb1b)
+
+# Compute standardized scores for political extremity in the combined dataset
+nhb1$z_PolOrientExtremity <- scale(nhb1$PolOrientExtremity)
+nhb1$z_SocOrientExtremity <- scale(nhb1$SocOrientExtremity)
+nhb1$z_EconOrientExtremity <- scale(nhb1$EconOrientExtremity)
+nhb1$z_SECSExtremity <- scale(nhb1$SECSExtremity)
+nhb1$composite_ideological_extremity <- rowMeans(nhb1[, c("z_PolOrientExtremity", "z_SocOrientExtremity", "z_EconOrientExtremity", "z_SECSExtremity")], na.rm = TRUE)
+nhb1$composite_ideological_extremity_z <- scale(nhb1$composite_ideological_extremity)
+
+# Compute standardized scores for mean intergroup bias in the combined dataset
+nhb1$z_total_ingroup_minus_outgroup_points <- scale(nhb1$total_ingroup_minus_outgroup_points)
+nhb1$z_ingroup_minus_outgroup_traits_positive <- scale(nhb1$ingroup_minus_outgroup_traits_positive)
+nhb1$z_ingroup_minus_outgroup_identify <- scale(nhb1$ingroup_minus_outgroup_identify)
+nhb1$mean_intergroup_bias <- rowMeans(nhb1[, c("z_total_ingroup_minus_outgroup_points", "z_ingroup_minus_outgroup_traits_positive", "z_ingroup_minus_outgroup_identify")], na.rm = TRUE)
+nhb1$mean_intergroup_bias_z <- scale(nhb1$mean_intergroup_bias)
+
+```
+
+## Preregistered exploratory analysis
+
+From the Exploratory Analysis subsection in the Stage 1 Registered Report:
+
+*In all studies, we will also conduct exploratory analyses to determine whether ideological extremity (that is, a person’s degree of liberalism/conservatism, from moderate to extreme) predicts intergroup bias. To assess ideological extremity, we will calculate the absolute distance between the midpoint of the scale and participants’ responses for each of the four measures of political ideology listed above. We will then z-score these items and compute the mean to create a single index of ideological extremity. This will serve as our measure of extremity in all analyses.*
+
+We will also compute a reliability analysis of the combined extremity index, following this passage in the Stage 1 Registered Report:
+
+*For all scale measures, we specify the minimum necessary reliability score (alpha) as .70. For any scales for which this alpha is not achieved, we will conduct a factor analysis to identify subscales that exhibit sufficient reliability, following the same .70 cutoff. We will then separately report the relation between these subscales and our variables of interest in the Supplemental Information.*
+
+We will compute the analysis in all three samples, following our analysis strategy from the confirmatory analyses. Due to the inadequate internal consistency of the intergroup bias index (see reliability analyses in separate script), we will conduct all analyses with the intergroup bias index, Tajfel points, evaluative traits, and identification ratings as dependent variables.
+
+## Reliability analysis
+
+```{r}
+# Reliability in the combined sample
+strel(nhb1[, c("z_PolOrientExtremity", "z_SocOrientExtremity", "z_EconOrientExtremity", "z_SECSExtremity")], estimates = "alpha")
+
+# Reliability in the Prolific sample
+strel(nhb1a[, c("z_PolOrientExtremity", "z_SocOrientExtremity", "z_EconOrientExtremity", "z_SECSExtremity")], estimates = "alpha")
+
+# Reliability in the MTurk sample
+strel(nhb1b[, c("z_PolOrientExtremity", "z_SocOrientExtremity", "z_EconOrientExtremity", "z_SECSExtremity")], estimates = "alpha")
+
+```
+
+The political extremity index shows excellent internal consistency in all three samples ($\alpha$ = 0.83), so we will work with the index in the following analyses.
+
+## Effect of political extremity on intergroup bias (combined measure)
+
+### Combined sample
+
+#### Model fitting
+
+```{r}
+# Define model equation
+exploratory_formula <- mean_intergroup_bias_z ~ composite_ideological_extremity_z
+
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1)
+
+# Fit Bayesian model
+exploratory_priors <- set_prior("normal(0, 0.5)", class = "b")
+
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4_bayesmodel_extremity"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+### Prolific sample
+
+#### Model fitting
+
+```{r}
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1a)
+
+# Fit Bayesian model
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1a,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4a_bayesmodel_extremity"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+### MTurk sample
+
+#### Model fitting
+
+```{r}
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1b)
+
+# Fit Bayesian model
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1b,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4b_bayesmodel_extremity"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+#### Conclusion
+
+Across the three samples, there is mixed evidence regarding the effect of political extremity on bias. In all samples, there is, descriptively, a small positive effect of ideological extremity on intergroup bias. In the combined sample, the p-value indicates a significant result, but the Bayes factor shows weak evidence in favor of the null hypothesis (Jeffrey-Lindley paradox). This indicates that we should interpret the significant effect with lots of caution. In the Prolific sample, the p-value is not significant and the Bayes factor shows strong evidence in favor of the null hypothesis. In the MTurk sample, the p-value is significant and the Bayes factor shows anecdotal evidence for the alternative hypothesis. Overall, these mixed effects are likely to be a result of the low internal consistency of the intergroup bias index. Hence, we compute the same analyses for each of the index variables separately.
+
+## Effect of political extremity on bias in Tajfel matrices
+
+### Combined sample
+
+#### Model fitting
+
+```{r}
+# Define model equation
+exploratory_formula <- z_total_ingroup_minus_outgroup_points ~ composite_ideological_extremity_z
+
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1)
+
+# Fit Bayesian model
+exploratory_priors <- set_prior("normal(0, 0.5)", class = "b")
+
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4_bayesmodel_extremity-points"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+### Prolific sample
+
+#### Model fitting
+
+```{r}
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1a)
+
+# Fit Bayesian model
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1a,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4a_bayesmodel_extremity-points"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+### MTurk sample
+
+#### Model fitting
+
+```{r}
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1b)
+
+# Fit Bayesian model
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1b,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4b_bayesmodel_extremity-points"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+### Conclusion
+In all three samples, there is evidence for the null hypothesis: There is no effect of ideological extremity on bias in points allocated to the ingroup/outgroup.
+
+## Effect of political extremity on bias in evaluative trait scores
+
+### Combined sample
+
+#### Model fitting
+
+```{r}
+# Define model equation
+exploratory_formula <- z_ingroup_minus_outgroup_traits_positive ~ composite_ideological_extremity_z
+
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1)
+
+# Fit Bayesian model
+exploratory_priors <- set_prior("normal(0, 0.5)", class = "b")
+
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4_bayesmodel_extremity-traits"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+### Prolific sample
+
+#### Model fitting
+
+```{r}
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1a)
+
+# Fit Bayesian model
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1a,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4a_bayesmodel_extremity-traits"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+### MTurk sample
+
+#### Model fitting
+
+```{r}
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1b)
+
+# Fit Bayesian model
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1b,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4b_bayesmodel_extremity-traits"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+### Conclusion
+In all three samples, there is evidence in favor of the null hypothesis: There is no effect of ideological extremity on bias in trait ratings. 
+
+## Effect of political extremity on bias in group identification ratings
+
+### Combined sample
+
+#### Model fitting
+
+```{r}
+# Define model equation
+exploratory_formula <- z_ingroup_minus_outgroup_identify ~ composite_ideological_extremity_z
+
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1)
+
+# Fit Bayesian model
+exploratory_priors <- set_prior("normal(0, 0.5)", class = "b")
+
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4_bayesmodel_extremity-identify"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+### Prolific sample
+
+#### Model fitting
+
+```{r}
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1a)
+
+# Fit Bayesian model
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1a,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4a_bayesmodel_extremity-identify"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+### MTurk sample
+
+#### Model fitting
+
+```{r}
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb1b)
+
+# Fit Bayesian model
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb1b,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory4b_bayesmodel_extremity-identify"
+)
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint2_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+### Conclusion
+In the combined sample and in the MTurk sample, there is a significant effect of ideological extremity on ingroup-vs-outgroup identification and the Bayes factor shows weak evidence for the alternative hypothesis. In the Prolific sample, this effect cannot be replicated. The p-value is nonsignificant and the Bayes factor shows evidence for the null hypothesis.
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```

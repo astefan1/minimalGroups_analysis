@@ -1,0 +1,105 @@
+---
+title: "NHB1: Overview of main hypothesis testing results with different DVs"
+author: "Angelika Stefan"
+output: html_document
+---
+
+Our reliability analyses indicated that the composite intergroup bias measure used as the main dependent variable in the main confirmatory analyses in NHB1 did not fulfill our quality criteria for an internally consistent scale. We therefore recomputed exploratory analyses with the three variables that formed the score separately. Here, we provide an overview of these analyses.
+
+## Load packages
+
+```{r setup}
+library(knitr)
+```
+
+### Ideological asymmetry in intergroup bias
+
+Results for the individual scales are qualitatively very similar to the composite measure, with clear evidence in favor of the asymmetry effect in the combined sample and the Prolific sample, and inconclusive evidence in the MTurk sample. Generally, the effect is most pronounced for the composite measure and least pronounced for the identification measure. 
+
+__Combined sample__
+
+```{r echo=FALSE}
+original_measure <- c(0.11, 0.07, 0.15, 14941.83, 0)
+points_measure <- c(0.09, 0.04, 0.13, 186.99, 0)
+traits_measure <- c(0.08, 0.04, 0.12, 78.14, 0)
+identify_measure <- c(0.07, 0.03, 0.11, 11.33, 0.001)
+kable(data.frame(rbind(original_measure, 
+                       points_measure,
+                       traits_measure, 
+                       identify_measure),
+                 row.names = c("Composite Measure",
+                               "Tajfel Points",
+                               "Evaluative Traits",
+                               "Identification")),
+      col.names = c("coef", "CI lower", "CI upper", "Bayes factor", "p value"),
+      caption = "Asymmetry effect in combined sample")
+
+```
+
+
+__Prolific sample__
+
+```{r echo=FALSE}
+original_measure <- c(0.15, 0.09, 0.21, 8044.21, 0)
+points_measure <- c(0.12, 0.06, 0.18, 188.4, 0)
+traits_measure <- c(0.11, 0.05, 0.17, 79.61, 0)
+identify_measure <- c(0.08, 0.03, 0.14, 6.05, 0.003)
+kable(data.frame(rbind(original_measure, 
+                       points_measure,
+                       traits_measure, 
+                       identify_measure),
+                 row.names = c("Composite Measure",
+                               "Tajfel Points",
+                               "Evaluative Traits",
+                               "Identification")),
+      col.names = c("coef", "CI lower", "CI upper", "Bayes factor", "p value"),
+      caption = "Asymmetry effect in Prolific sample")
+```
+
+
+__MTurk sample__
+
+```{r echo=FALSE}
+original_measure <- c(0.07, 0.01, 0.13, 1.51, 0.012)
+points_measure <- c(0.06, 0, 0.12, 0.71, 0.029)
+traits_measure <- c(0.05, -0.01, 0.11, 0.48, 0.045)
+identify_measure <- c(0.04, -0.02, 0.1, 0.26, 0.095)
+kable(data.frame(rbind(original_measure, 
+                       points_measure,
+                       traits_measure, 
+                       identify_measure),
+                 row.names = c("Composite Measure",
+                               "Tajfel Points",
+                               "Evaluative Traits",
+                               "Identification")),
+      col.names = c("coef", "CI lower", "CI upper", "Bayes factor", "p value"),
+      caption = "Asymmetry effect in MTurk sample")
+```
+
+### Moderation effect of sample
+
+Results for the individual scales are qualitatively very similar to the composite measure. For all measures, there is inconclusive evidence for a moderating effect of sample (Bayes factors between 2.56 in favor of H0 and 1.08 in favor of H1). Descriptively, the ideological asymmetry effect is stronger in the Prolific sample in all measures (indicated by a positive regression coefficient), and, same as before, the effect is more pronounced for the composite measure than for any of the individual measures.
+
+```{r echo=FALSE}
+original_measure <- c(0.08, -0.01, 0.16, 1.08, 0.066)
+points_measure <- c(0.06, -0.02, 0.14, 0.58, 0.147)
+traits_measure <- c(0.05, -0.03, 0.14, 0.45, 0.213)
+identify_measure <- c(0.05, 0.04, 0.13, 0.39, 0.26)
+kable(data.frame(rbind(original_measure, 
+                       points_measure,
+                       traits_measure, 
+                       identify_measure),
+                 row.names = c("Composite Measure",
+                               "Tajfel Points",
+                               "Evaluative Traits",
+                               "Identification")),
+      col.names = c("coef", "CI lower", "CI upper", "Bayes factor", "p value"),
+      caption = "Platform moderation effect")
+```
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```

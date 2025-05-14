@@ -1,0 +1,421 @@
+---
+title: "Confirmatory Analyses NHB3"
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(brms)
+library(bayestestR)
+library(emmeans)
+```
+
+## Read in data
+
+```{r}
+nhb3 <- read.csv('../../data/nhb3_processed.csv')
+```
+
+## General note on hypothesis testing and parameter estimation strategy
+
+We will evaluate all hypotheses first in the frequentist, then in the Bayesian framework. The seed used in the Monte Carlo sampling procedure was suggested by AS during the sequential sampling procedure for Study 2 while being blind to its potential effect on the resulting Bayes factor. We subsequently decided to use it in all analyses for simplicity. The final set of analyses was conducted on AS' computer. Bayesian analyses are computed twice, using two different sets of prior distributions: A set of default prior distributions and a set of informed prior distributions that was based on the results of Study 1.
+
+## Testing ideological asymmetry in intergroup bias
+
+### Preregistration (Stage 1 Report)
+
+Excerpt from the Design Table:
+
+*Is ideology related to explicit minimal group bias?*
+
+*H0: Composite ideology is unrelated to composite intergroup bias*
+
+*H1: Composite ideology is positively related to composite intergroup bias*
+
+*We will examine the correlation between composite ideology and composite intergroup bias*
+
+Excerpt from the Analysis Plan:
+
+*Political conservatism will be associated with intergroup bias. We will use linear regression to test this hypothesis. Political ideology (the continuous composite measure) will be entered as the independent variable, and our composite intergroup bias measure will be entered as the dependent variable.*
+
+Excerpt from the Main Hypothesis testing section:
+
+*The existing literature (and our pilot data) does not provide clear reasons to predict that liberals may generally exhibit greater intergroup bias—rather, the competing predictions in the literature, between which we aim to adjudicate, are (1) that conservatives exhibit greater intergroup bias, or (2) there are no ideological differences in intergroup bias. Given this, we will employ one-tailed statistical tests for examining ideological differences in intergroup bias.*
+
+*To interpret potential null results, we will conduct an inferiority test if our measure of intergroup bias either shows (1) a non-significant association with ideology and/or (2) an effect size of less than r = .10. The inferiority test operates as an equivalence test with the lower bound set to infinity. It therefore allows us to determine whether we can reject the null hypothesis that the effect is at least as large as r = .10 and examine the probability that—given an observed effect size—there exists a true effect in the population that is at least as large as the smallest effect size of interest (SESOI).To conduct these analyses, we will calculate the 90% confidence interval around the observed correlation between ideology and intergroup bias. If this interval does not include (or exceed) .1, we will conclude that the effect of ideology on intergroup bias either does not exist or is too small to be of any practical importance109. For example, should we find a positive but small relationship between ideology and intergroup bias of r = .05 and the 90% CI of this effect does not include (or exceed) .1, we will interpret this as evidence against the intergroup asymmetry hypothesis.*
+
+### Model fitting
+
+```{r}
+# Define model equation
+confirmatory1_formula <- mean_intergroup_bias_z ~ composite_political_orientation_z
+
+# Fit frequentist model
+confirmatory1_freqmodel <- lm(confirmatory1_formula, nhb3)
+
+# Fit Bayesian models
+confirmatory1_default_priors <- c(set_prior("normal(0, 0.5)", class = "b"))
+confirmatory1_informed_priors <- c(set_prior("normal(0.15, 0.05)", class = "b"))
+
+confirmatory1_bayesmodel_default <- brm(
+  formula = confirmatory1_formula, 
+  data = nhb3, 
+  family = gaussian(),
+  prior = confirmatory1_default_priors,
+  sample_prior = "no",
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  # silent = TRUE,
+  # refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb3/confirmatory1_bayesmodel_default"
+  )
+
+confirmatory1_priordraws_default<- brm(
+  confirmatory1_formula,
+  data = nhb3,
+  family = "gaussian",
+  prior = confirmatory1_default_priors,
+  sample_prior = "only",
+  seed = 987654,
+  # silent = TRUE,
+  # refresh = 0,
+  iter = 100000,
+  file = "./model-fits/nhb3/confirmatory1_bayesmodel_priordraws_default"
+  )
+                            
+confirmatory1_bayesmodel_informed <- brm(
+  formula = confirmatory1_formula, 
+  data = nhb3, 
+  family = gaussian(),
+  prior = confirmatory1_informed_priors,
+  sample_prior = "no",
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  # silent = TRUE,
+  # refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb3/confirmatory1_bayesmodel_informed"
+  )
+
+confirmatory1_priordraws_informed<- brm(
+  confirmatory1_formula,
+  data = nhb3,
+  family = "gaussian",
+  prior = confirmatory1_informed_priors,
+  sample_prior = "only",
+  seed = 987654,
+  # silent = TRUE,
+  # refresh = 0,
+  iter = 100000,
+  file = "./model-fits/nhb3/confirmatory1_bayesmodel_priordraws_informed"
+  )                            
+```
+
+### Model summaries
+
+```{r}
+summary(confirmatory1_freqmodel)
+summary(confirmatory1_bayesmodel_default)
+summary(confirmatory1_bayesmodel_informed)
+```
+
+### Hypothesis test
+
+Frequentist quantities
+
+```{r}
+# Coefficient estimate
+coef1_freq <- confirmatory1_freqmodel$coefficients["composite_political_orientation_z"]
+
+# Confidence interval
+confint1_freq <- confint(confirmatory1_freqmodel, "composite_political_orientation_z")
+confint90_freq <- confint(confirmatory1_freqmodel, "composite_political_orientation_z", level = 0.90)
+
+# p-Value (computed manually as one-sided p-value)
+df_confirm1 <- confirmatory1_freqmodel$df.residual
+t_confirm1 <- confirmatory1_freqmodel$coefficients[["composite_political_orientation_z"]]/summary(confirmatory1_freqmodel)$coefficients["composite_political_orientation_z","Std. Error"]
+p_confirm1 <- 1-pt(t_confirm1, df_confirm1)
+
+data.frame("beta_z" = round(coef1_freq, 2),
+           "CI_lower_95" = round(confint1_freq[1], 2),
+           "CI_upper_95" = round(confint1_freq[2], 2),
+           "CI_lower_90" = round(confint90_freq[1], 2),
+           "CI_upper_90" = round(confint90_freq[2], 2),
+           "p value" = round(p_confirm1, 3))
+```
+
+Bayesian quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes_default <- fixef(confirmatory1_bayesmodel_default)["composite_political_orientation_z", "Estimate"]
+coef1_bayes_informed <- fixef(confirmatory1_bayesmodel_informed)["composite_political_orientation_z", "Estimate"]
+
+# Credible interval
+cred1_bayes_default <- fixef(confirmatory1_bayesmodel_default)["composite_political_orientation_z", c("Q2.5", "Q97.5")]
+cred90_bayes_default <- fixef(confirmatory1_bayesmodel_default, probs = c(0.05, 0.95))["composite_political_orientation_z", c("Q5", "Q95")]
+cred1_bayes_informed <- fixef(confirmatory1_bayesmodel_informed)["composite_political_orientation_z", c("Q2.5", "Q97.5")]
+cred90_bayes_informed <- fixef(confirmatory1_bayesmodel_informed, probs = c(0.05, 0.95))["composite_political_orientation_z", c("Q5", "Q95")]
+
+# Bayes factor
+confirmatory1_bf_default <- bayesfactor_parameters(
+  confirmatory1_bayesmodel_default,
+  prior=confirmatory1_priordraws_default,
+  direction = "right", 
+  parameters = "composite_political_orientation_z")
+
+confirmatory1_bf_informed <- bayesfactor_parameters(
+  confirmatory1_bayesmodel_informed,
+  prior=confirmatory1_priordraws_informed,
+  direction = "right", 
+  parameters = "composite_political_orientation_z")
+                       
+# Posterior probability > .10
+postProb_default <- hypothesis(confirmatory1_bayesmodel_default, "composite_political_orientation_z > 0.10")$hypothesis$Post.Prob
+postProb_informed <- hypothesis(confirmatory1_bayesmodel_informed, "composite_political_orientation_z > 0.10")$hypothesis$Post.Prob
+
+data.frame("prior" = c("default", "informed"),
+           "beta_z" = round(c(coef1_bayes_default, coef1_bayes_informed), 2),
+           "CI_lower_95" = round(c(cred1_bayes_default[1], cred1_bayes_informed[1]), 2),
+           "CI_upper_95" = round(c(cred1_bayes_default[2], cred1_bayes_informed[2]), 2),
+           "CI_lower_90" = round(c(cred90_bayes_default[1], cred90_bayes_informed[1]), 2),
+           "CI_upper_90" = round(c(cred90_bayes_default[2], cred90_bayes_informed[2]), 2),
+           "BFplus0" = round(c(exp(confirmatory1_bf_default$log_BF), exp(confirmatory1_bf_informed$log_BF)), 2),
+           "PostProb" = round(c(postProb_default, postProb_informed), 2))
+```
+
+
+## Testing the moderating effect of group type (control, cooperative, competitive)
+
+### Preregistration (Stage 1 Report)
+
+Excerpt from the Design Table:
+
+*Does group type (control versus cooperative versus competitive) moderate ideological differences in minimal group bias?*
+
+*H0: Group type does not moderate the relationship between ideology and minimal group bias*
+
+*H1: Group type does moderate the relationship between ideology and minimal group bias*
+
+*We will regress dummy-coded variables for the cooperative group and the competitive group and the continuous composite ideology score and their interactions onto composite intergroup bias*
+
+Excerpt from the Analysis plan:
+
+*The ideology X group type interaction will be examined following the procedure outlined above in Study 2.*
+
+The excerpt from the analysis plan refers to this section describing the analysis procedure from Study 2:
+
+*Ideology X group type interaction: We will examine whether minimal group type (random versus volitional versus attitude similarity) moderates the size of the relationship between ideology and ingroup favoritism using a linear regression model with dummy-coded variables for condition (for volitional group and attitude similarity group), ideology, and their interactions as predictors of intergroup bias. If the interactions are non-significant, and/or effect sizes are smaller than r = .10, we will conduct inferiority tests following the procedures above.*
+
+Excerpt from the Design section (specifying the anticipated directional effect):
+
+*theories of conservatism and related belief systems have argued that ideological beliefs are largely situationally dependent, becoming more salient or “activated” under conditions of intergroup competition or threat, and that they exert a stronger influence on cognition and behavior under these circumstances. We therefore predict that ideological differences in intergroup bias may emerge more strongly under competitive (versus cooperative) intergroup conditions.*
+
+### Model fitting
+
+```{r}
+nhb3$condition <- factor(nhb3$condition, 
+                         levels = c("no_interaction", "competitive", "cooperative"),
+                         labels = c("Control", "Competitive", "Cooperative"))
+
+# Define model equation
+confirmatory2_formula <- mean_intergroup_bias_z ~ composite_political_orientation_z * condition
+
+# Fit frequentist model
+confirmatory2_freqmodel <- lm(confirmatory2_formula, data = nhb3)
+
+# Fit Bayesian models
+
+confirmatory2_default_priors <- c(
+  set_prior("normal(0, 0.5)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0, 0.5)", class = "b", coef="conditionCompetitive"),
+  set_prior("normal(0, 0.5)", class = "b", coef="conditionCooperative"),
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:conditionCompetitive"),
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:conditionCooperative")
+  )
+
+confirmatory2_informed_priors <- c(
+  set_prior("normal(0.15, 0.05)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0.1, 0.05)", class = "b", coef="conditionCompetitive"),
+  set_prior("normal(0.1, 0.05)", class = "b", coef="conditionCooperative"),
+  set_prior("normal(0.1, 0.05)", class = "b", coef="composite_political_orientation_z:conditionCompetitive"),
+  set_prior("normal(0.1, 0.05)", class = "b", coef="composite_political_orientation_z:conditionCooperative")
+  )
+
+confirmatory2_bayesmodel_default <- brms::brm(
+  formula = confirmatory2_formula,
+  data = nhb3,
+  family = "gaussian",
+  prior = confirmatory2_default_priors,
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb3/confirmatory2_bayesmodel_default"
+)
+
+confirmatory2_priordraws_default <- brms::brm(
+  confirmatory2_formula,
+  data = nhb3, 
+  family = "gaussian",
+  prior = confirmatory2_default_priors,
+  sample_prior = "only",
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  iter = 100000,
+  file = "./model-fits/nhb3/confirmatory2_bayesmodel_priordraws_default")
+
+confirmatory2_bayesmodel_informed <- brms::brm(
+  formula = confirmatory2_formula,
+  data = nhb3,
+  family = "gaussian",
+  prior = confirmatory2_informed_priors,
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb3/confirmatory2_bayesmodel_informed"
+)
+
+confirmatory2_priordraws_informed <- brms::brm(
+  confirmatory2_formula,
+  data = nhb3, 
+  family = "gaussian",
+  prior = confirmatory2_informed_priors,
+  sample_prior = "only",
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  iter = 100000,
+  file = "./model-fits/nhb3/confirmatory2_bayesmodel_priordraws_informed")
+
+```
+
+### Model summaries
+
+```{r}
+summary(confirmatory2_freqmodel)
+summary(confirmatory2_bayesmodel_default)
+summary(confirmatory2_bayesmodel_informed)
+```
+
+### Hypothesis test
+
+Frequentist tests of interaction effects
+
+```{r}
+# Coefficient estimate
+coef2_freqV <- confirmatory2_freqmodel$coefficients["composite_political_orientation_z:conditionCompetitive"]
+coef2_freqA <- confirmatory2_freqmodel$coefficients["composite_political_orientation_z:conditionCooperative"]
+
+# Confidence interval
+confint2_freqV <- confint(confirmatory2_freqmodel, "composite_political_orientation_z:conditionCompetitive")
+confint2_freqA <- confint(confirmatory2_freqmodel, "composite_political_orientation_z:conditionCooperative")
+
+# 90% Confidence interval
+confint2_freqV90 <- confint(confirmatory2_freqmodel, "composite_political_orientation_z:conditionCompetitive", prob = 0.90)
+confint2_freqA90 <- confint(confirmatory2_freqmodel, "composite_political_orientation_z:conditionCooperative", prob = 0.90)
+
+# p-Value (computed from model output as for one-sided test)
+t_confirm2V <- summary(confirmatory2_freqmodel)$coefficients["composite_political_orientation_z:conditionCompetitive","t value"]
+t_confirm2A <- summary(confirmatory2_freqmodel)$coefficients["composite_political_orientation_z:conditionCooperative","t value"]
+df_confirm2 <- confirmatory2_freqmodel$df.residual
+p_confirm2V <- 1-pt(t_confirm2V, df_confirm2)
+p_confirm2A <- 1-pt(t_confirm2A, df_confirm2)
+
+data.frame("beta_z" = round(c(coef2_freqV, coef2_freqA), 2),
+           "CI_lower" = round(c(confint2_freqV[1], confint2_freqA[1]), 2),
+           "CI_upper" = round(c(confint2_freqV[2], confint2_freqA[2]), 2),
+           "CI_lower_90" = round(c(confint2_freqV90[1], confint2_freqA90[1]), 2),
+           "CI_upper_90" = round(c(confint2_freqV90[2], confint2_freqA90[2]), 2),
+           "p value" = round(c(p_confirm2V, p_confirm2A), 3))
+```
+
+
+Bayesian tests of interaction effects
+
+```{r}
+# Coefficient estimate
+coef2_defaultbayesV <- fixef(confirmatory2_bayesmodel_default)["composite_political_orientation_z:conditionCompetitive", "Estimate"]
+coef2_defaultbayesA <- fixef(confirmatory2_bayesmodel_default)["composite_political_orientation_z:conditionCooperative", "Estimate"]
+
+coef2_informedbayesV <- fixef(confirmatory2_bayesmodel_informed)["composite_political_orientation_z:conditionCompetitive", "Estimate"]
+coef2_informedbayesA <- fixef(confirmatory2_bayesmodel_informed)["composite_political_orientation_z:conditionCooperative", "Estimate"]
+
+# 95% Credible interval
+cred2_defaultbayesV <- fixef(confirmatory2_bayesmodel_default)["composite_political_orientation_z:conditionCompetitive", c("Q2.5", "Q97.5")]
+cred2_defaultbayesA <- fixef(confirmatory2_bayesmodel_default)["composite_political_orientation_z:conditionCooperative", c("Q2.5", "Q97.5")]
+
+cred2_informedbayesV <- fixef(confirmatory2_bayesmodel_informed)["composite_political_orientation_z:conditionCompetitive", c("Q2.5", "Q97.5")]
+cred2_informedbayesA <- fixef(confirmatory2_bayesmodel_informed)["composite_political_orientation_z:conditionCooperative", c("Q2.5", "Q97.5")]
+
+# 90% Credible interval
+cred90_defaultbayesV <- fixef(confirmatory2_bayesmodel_default, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionCompetitive", c("Q5", "Q95")]
+cred90_defaultbayesA <- fixef(confirmatory2_bayesmodel_default, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionCooperative", c("Q5", "Q95")]
+
+cred90_informedbayesV <- fixef(confirmatory2_bayesmodel_informed, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionCompetitive", c("Q5", "Q95")]
+cred90_informedbayesA <- fixef(confirmatory2_bayesmodel_informed, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionCooperative", c("Q5", "Q95")]
+
+# Bayes factor
+confirmatory2_defaultbfV <- bayesfactor_parameters(confirmatory2_bayesmodel_default,
+                       prior=confirmatory2_priordraws_default, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z:conditionCompetitive")
+confirmatory2_defaultbfA <- bayesfactor_parameters(confirmatory2_bayesmodel_default,
+                       prior=confirmatory2_priordraws_default, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z:conditionCooperative")
+
+confirmatory2_informedbfV <- bayesfactor_parameters(confirmatory2_bayesmodel_informed,
+                       prior=confirmatory2_priordraws_informed, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z:conditionCompetitive")
+confirmatory2_informedbfA <- bayesfactor_parameters(confirmatory2_bayesmodel_informed,
+                       prior=confirmatory2_priordraws_informed, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z:conditionCooperative")
+
+# Posterior probability
+postProb_defaultV <- hypothesis(confirmatory2_bayesmodel_default, "composite_political_orientation_z:conditionCompetitive < -0.10")$hypothesis$Post.Prob
+postProb_defaultA <- hypothesis(confirmatory2_bayesmodel_default, "composite_political_orientation_z:conditionCooperative < -0.10")$hypothesis$Post.Prob
+
+postProb_informedV <- hypothesis(confirmatory2_bayesmodel_informed, "composite_political_orientation_z:conditionCompetitive < -0.10")$hypothesis$Post.Prob
+postProb_informedA <- hypothesis(confirmatory2_bayesmodel_informed, "composite_political_orientation_z:conditionCooperative < -0.10")$hypothesis$Post.Prob
+
+# Interaction effect composite_political_orientation_z:conditionCompetitive
+data.frame("prior" = c("default", "informed"),
+           "beta_z" = round(c(coef2_defaultbayesV, coef2_informedbayesV), 2),
+           "CI_lower_95" = round(c(cred2_defaultbayesV[1], cred2_informedbayesV[1]), 2),
+           "CI_upper_95" = round(c(cred2_defaultbayesV[2], cred2_informedbayesV[2]), 2),
+           "CI_lower_90" = round(c(cred90_defaultbayesV[1], cred90_informedbayesV[1]), 2),
+           "CI_upper_90" = round(c(cred90_defaultbayesV[2], cred90_informedbayesV[2]), 2),
+           "BFplus0" = round(c(exp(confirmatory2_defaultbfV$log_BF), exp(confirmatory2_informedbfV$log_BF)), 3),
+           "PostProb" = round(c(postProb_defaultV, postProb_informedV), 2))
+
+# Interaction effect composite_political_orientation_z:conditionCooperative
+data.frame("prior" = c("default", "informed"),
+           "beta_z" = round(c(coef2_defaultbayesA, coef2_informedbayesA), 2),
+           "CI_lower_95" = round(c(cred2_defaultbayesA[1], cred2_informedbayesA[1]), 2),
+           "CI_upper_95" = round(c(cred2_defaultbayesA[2], cred2_informedbayesA[2]), 2),
+           "CI_lower_90" = round(c(cred90_defaultbayesA[1], cred90_informedbayesA[1]), 2),
+           "CI_upper_90" = round(c(cred90_defaultbayesA[2], cred90_informedbayesA[2]), 2),
+           "BFplus0" = round(c(exp(confirmatory2_defaultbfA$log_BF), exp(confirmatory2_informedbfA$log_BF)), 3),
+           "PostProb" = round(c(postProb_defaultA, postProb_informedV), 2))
+```
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```

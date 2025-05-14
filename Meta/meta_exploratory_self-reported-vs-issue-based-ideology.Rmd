@@ -1,0 +1,157 @@
+---
+title: "Average Effects for Self-Reported and Issue-Based Ideology Across Studies"
+author: "Angelika Stefan"
+output: html_document
+---
+
+## Preregistration (Stage 1 Report)
+
+From the Analysis Plan section:
+
+*In exploratory analyses, we will also compute average effect sizes for each of the individual dimensions of our independent (e.g., self-reported ideology, issue-based ideology) and dependent measures (e.g., intergroup evaluations, intergroup allocations) to determine whether the ideology-bias relation differs as a function of the specific measures that are used.*
+
+We will conduct 8 exploratory internal meta-analyses to investigate this effect: One for each combination of the independent measure (self-reported ideology, issue-based ideology) and dependent measure (Tajfel points, group identification, trait evaluation, combined measure).
+
+The meta-analyses follow the same structure as the confirmatory meta-analysis.
+
+## Load packages
+
+```{r}
+library(metafor)
+library(brms)
+library(knitr)
+```
+
+## Read in data
+
+```{r}
+nhbMeta <- read.csv('../../data/metadata_processed.csv')
+```
+
+## Define functions for 3-level meta-analysis
+
+```{r}
+# corname: Name of the correlation in nhbMeta
+# nhbMeta: nhbMeta dataset
+# frequentist: TRUE for frequentist, FALSE for Bayesian meta-analysis
+
+multilevelmeta <- function(corname, nhbMeta, frequentist){
+  
+  # Define dataset for meta-analysis
+  meta1 <- nhbMeta[,1:4]
+  meta1$cor <- nhbMeta[, paste0("cor_", corname)]
+  meta1[, c("yi", "vi")] <- escalc(ri = meta1$cor, ni = meta1$N, measure = "ZCOR")
+  if(frequentist == TRUE){
+    res <- rma.mv(yi = meta1$yi, V = meta1$vi, random = list(~1 | study/group), 
+                    data = meta1, test = "t", method = "REML", 
+                    slab = paste0(meta1$study, "_", meta1$group))
+  } else if (frequentist == FALSE){
+    metapriors <- c(prior(normal(0,0.5), class = Intercept),
+                prior(cauchy(0,0.2), class = sd))
+    meta1$seZ <- sqrt(meta1$vi)
+    res <- brm(yi|se(seZ) ~ 1 + (1 | group) + (1 | study),
+                  data = meta1,
+                  prior = metapriors,
+                  sample_prior = TRUE,
+                  iter = 100000,
+                  chains = 4,
+                  seed = 987654,
+                  #silent = TRUE,
+                  #refresh = 0,
+                  warmup = 5000,
+                  control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                  file = paste0("./model-fits/Meta/bayesMeta_", corname))
+  }
+  
+  return(res)
+
+}
+```
+
+## Model fitting
+
+```{r}
+# Frequentist
+freqMeta_BiasSelfReportedIdeology <- multilevelmeta("BiasSelfReportedIdeology", nhbMeta, frequentist = TRUE)
+freqMeta_TraitsSelfReportedIdeology <- multilevelmeta("TraitsSelfReportedIdeology", nhbMeta, frequentist = TRUE)
+freqMeta_PointsSelfReportedIdeology <- multilevelmeta("PointsSelfReportedIdeology", nhbMeta, frequentist = TRUE)
+freqMeta_IdentifySelfReportedIdeology <- multilevelmeta("IdentifySelfReportedIdeology", nhbMeta, frequentist = TRUE)
+freqMeta_BiasIssueBasedIdeology <- multilevelmeta("BiasIssueBasedIdeology", nhbMeta, frequentist = TRUE)
+freqMeta_TraitsIssueBasedIdeology <- multilevelmeta("TraitsIssueBasedIdeology", nhbMeta, frequentist = TRUE)
+freqMeta_PointsIssueBasedIdeology <- multilevelmeta("PointsIssueBasedIdeology", nhbMeta, frequentist = TRUE)
+freqMeta_IdentifyIssueBasedIdeology <- multilevelmeta("IdentifyIssueBasedIdeology", nhbMeta, frequentist = TRUE)
+
+# Bayesian
+bayesMeta_BiasSelfReportedIdeology <- multilevelmeta("BiasSelfReportedIdeology", nhbMeta, frequentist = FALSE)
+bayesMeta_TraitsSelfReportedIdeology <- multilevelmeta("TraitsSelfReportedIdeology", nhbMeta, frequentist = FALSE)
+bayesMeta_PointsSelfReportedIdeology <- multilevelmeta("PointsSelfReportedIdeology", nhbMeta, frequentist = FALSE)
+bayesMeta_IdentifySelfReportedIdeology <- multilevelmeta("IdentifySelfReportedIdeology", nhbMeta, frequentist = FALSE)
+bayesMeta_BiasIssueBasedIdeology <- multilevelmeta("BiasIssueBasedIdeology", nhbMeta, frequentist = FALSE)
+bayesMeta_TraitsIssueBasedIdeology <- multilevelmeta("TraitsIssueBasedIdeology", nhbMeta, frequentist = FALSE)
+bayesMeta_PointsIssueBasedIdeology <- multilevelmeta("PointsIssueBasedIdeology", nhbMeta, frequentist = FALSE)
+bayesMeta_IdentifyIssueBasedIdeology <- multilevelmeta("IdentifyIssueBasedIdeology", nhbMeta, frequentist = FALSE)
+```
+
+## Extract meta-analytic effect size estimates
+
+```{r}
+est_bayes <- data.frame("Ideology" = rep(c("SelfReported", "IssueBased"), each=4),
+                        "Bias" = rep(c("Combined", "Trait", "Points", "Identification"), 2),
+                        "z" = rep(NA, 8),
+                        "CI_lower95" = rep(NA, 8),
+                        "CI_upper95" = rep(NA, 8))
+
+est_bayes[1, c(3:5)] <- fixef(bayesMeta_BiasSelfReportedIdeology)[,c(1,3,4)]
+est_bayes[2, c(3:5)] <- fixef(bayesMeta_TraitsSelfReportedIdeology)[,c(1,3,4)]
+est_bayes[3, c(3:5)] <- fixef(bayesMeta_PointsSelfReportedIdeology)[,c(1,3,4)]
+est_bayes[4, c(3:5)] <- fixef(bayesMeta_IdentifySelfReportedIdeology)[,c(1,3,4)]
+est_bayes[5, c(3:5)] <- fixef(bayesMeta_BiasIssueBasedIdeology)[,c(1,3,4)]
+est_bayes[6, c(3:5)] <- fixef(bayesMeta_TraitsIssueBasedIdeology)[,c(1,3,4)]
+est_bayes[7, c(3:5)] <- fixef(bayesMeta_PointsIssueBasedIdeology)[,c(1,3,4)]
+est_bayes[8, c(3:5)] <- fixef(bayesMeta_IdentifyIssueBasedIdeology)[,c(1,3,4)]
+
+est_bayes <- data.frame("Ideology" = rep(c("SelfReported", "IssueBased"), each=4),
+                        "Bias" = rep(c("Combined", "Trait", "Points", "Identification"), 2),
+                        "z" = rep(NA, 8),
+                        "CI_lower95" = rep(NA, 8),
+                        "CI_upper95" = rep(NA, 8))
+
+est_bayes[1, c(3:5)] <- fixef(bayesMeta_BiasSelfReportedIdeology)[,c(1,3,4)]
+est_bayes[2, c(3:5)] <- fixef(bayesMeta_TraitsSelfReportedIdeology)[,c(1,3,4)]
+est_bayes[3, c(3:5)] <- fixef(bayesMeta_PointsSelfReportedIdeology)[,c(1,3,4)]
+est_bayes[4, c(3:5)] <- fixef(bayesMeta_IdentifySelfReportedIdeology)[,c(1,3,4)]
+est_bayes[5, c(3:5)] <- fixef(bayesMeta_BiasIssueBasedIdeology)[,c(1,3,4)]
+est_bayes[6, c(3:5)] <- fixef(bayesMeta_TraitsIssueBasedIdeology)[,c(1,3,4)]
+est_bayes[7, c(3:5)] <- fixef(bayesMeta_PointsIssueBasedIdeology)[,c(1,3,4)]
+est_bayes[8, c(3:5)] <- fixef(bayesMeta_IdentifyIssueBasedIdeology)[,c(1,3,4)]
+
+est_freq <- data.frame("Ideology" = rep(c("SelfReported", "IssueBased"), each=4),
+                        "Bias" = rep(c("Combined", "Trait", "Points", "Identification"), 2),
+                        "z" = rep(NA, 8),
+                        "CI_lower95" = rep(NA, 8),
+                        "CI_upper95" = rep(NA, 8))
+
+est_freq[1, c(3:5)] <- confint(freqMeta_BiasSelfReportedIdeology, fixed=TRUE)$fixed
+est_freq[2, c(3:5)] <- confint(freqMeta_TraitsSelfReportedIdeology, fixed=TRUE)$fixed
+est_freq[3, c(3:5)] <- confint(freqMeta_PointsSelfReportedIdeology, fixed=TRUE)$fixed
+est_freq[4, c(3:5)] <- confint(freqMeta_IdentifySelfReportedIdeology, fixed=TRUE)$fixed
+est_freq[5, c(3:5)] <- confint(freqMeta_BiasIssueBasedIdeology, fixed=TRUE)$fixed
+est_freq[6, c(3:5)] <- confint(freqMeta_TraitsIssueBasedIdeology, fixed=TRUE)$fixed
+est_freq[7, c(3:5)] <- confint(freqMeta_PointsIssueBasedIdeology, fixed=TRUE)$fixed
+est_freq[8, c(3:5)] <- confint(freqMeta_IdentifyIssueBasedIdeology, fixed=TRUE)$fixed
+
+```
+
+Frequentist estimates:
+
+```{r}
+kable(est_freq)
+```
+
+Bayesian estimates:
+
+```{r}
+kable(est_bayes)
+```
+
+

@@ -1,0 +1,192 @@
+---
+title: "Reliability Analyses NHB1"
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(Bayesrel)
+library(knitr)
+```
+
+## Read in and combine data from Prolific and MTurk
+
+```{r}
+# Read in data
+nhb1a <- read.csv('../../data/nhb1a_processed.csv')
+nhb1b <- read.csv('../../data/nhb1b_processed.csv')
+
+nhb1a$platform <- "Prolific"
+nhb1b$platform <- "MTurk"
+
+# Combine data
+nhb1 <- rbind(nhb1a, nhb1b)
+
+# Compute standardized scores for composite political orientation in the combined dataset
+nhb1$z_mean_SECS <- scale(nhb1$mean_SECS)
+nhb1$z_EconOrient <- scale(nhb1$EconOrient)
+nhb1$z_SocOrient <- scale(nhb1$SocOrient)
+nhb1$z_PolOrient <- scale(nhb1$PolOrient)
+nhb1$composite_political_orientation <- rowMeans(nhb1[, c("z_mean_SECS", "z_EconOrient", "z_SocOrient", "z_PolOrient")], na.rm = TRUE)
+nhb1$composite_political_orientation_z <- scale(nhb1$composite_political_orientation)
+
+# Compute standardized scores for mean intergroup bias in the combined dataset
+nhb1$z_total_ingroup_minus_outgroup_points <- scale(nhb1$total_ingroup_minus_outgroup_points)
+nhb1$z_ingroup_minus_outgroup_traits_positive <- scale(nhb1$ingroup_minus_outgroup_traits_positive)
+nhb1$z_ingroup_minus_outgroup_identify <- scale(nhb1$ingroup_minus_outgroup_identify)
+nhb1$mean_intergroup_bias <- rowMeans(nhb1[, c("z_total_ingroup_minus_outgroup_points", "z_ingroup_minus_outgroup_traits_positive", "z_ingroup_minus_outgroup_identify")], na.rm = TRUE)
+nhb1$mean_intergroup_bias_z <- scale(nhb1$mean_intergroup_bias)
+```
+
+## Compute scale reliability scores
+
+The main confirmatory hypotheses that are tested in the first study involve the two scales:
+
+* Composite political orientation
+* Mean intergroup bias
+
+__Composite political orientation__
+
+The composite political orientation scale is computed as the average of the social and economic conservativeness scale (SEC) as well as three items measuring economic, social, and political orientation. We compute Cronbach's alpha for the SEC and the composite political orientation scale in the frequentist and Bayesian paradigm for the Prolific, MTurk, and combined sample.
+
+```{r}
+# SEC reliability
+alpha_SEC_Prolific <- strel(nhb1a[,c("RC_SECS_1", paste0("SECS_", 2:4), "RC_SECS_5", paste0("SECS_", 6:12))], estimates = "alpha")
+alpha_SEC_MTurk    <- strel(nhb1b[,c("RC_SECS_1", paste0("SECS_", 2:4), "RC_SECS_5", paste0("SECS_", 6:12))], estimates = "alpha")
+alpha_SEC_Combined <- strel(nhb1[,c("RC_SECS_1", paste0("SECS_", 2:4), "RC_SECS_5", paste0("SECS_", 6:12))], estimates = "alpha")
+
+# Composite political orientation scale
+alpha_CPO_Prolific <- strel(nhb1a[, c("z_mean_SECS", "z_EconOrient", "z_SocOrient", "z_PolOrient")], estimates = "alpha")
+alpha_CPO_MTurk <- strel(nhb1b[, c("z_mean_SECS", "z_EconOrient", "z_SocOrient", "z_PolOrient")], estimates = "alpha")
+alpha_CPO_Combined <- strel(nhb1[, c("z_mean_SECS", "z_EconOrient", "z_SocOrient", "z_PolOrient")], estimates = "alpha")
+
+# Print alpha in table
+kable(data.frame("frequentist" = c(alpha_SEC_Prolific$freq$est$freq_alpha,
+                                   alpha_SEC_MTurk$freq$est$freq_alpha, 
+                                   alpha_SEC_Combined$freq$est$freq_alpha),
+                 "Bayesian" = c(alpha_SEC_Prolific$Bayes$est$Bayes_alpha,
+                                alpha_SEC_MTurk$Bayes$est$Bayes_alpha,
+                                alpha_SEC_Combined$Bayes$est$Bayes_alpha), 
+                 row.names = c("Prolific", "MTurk", "Combined")),
+      caption = "Cronbach's alpha for Social and Economic Conservatism scale")
+
+kable(data.frame("frequentist" = c(alpha_CPO_Prolific$freq$est$freq_alpha,
+                                   alpha_CPO_MTurk$freq$est$freq_alpha, 
+                                   alpha_CPO_Combined$freq$est$freq_alpha),
+                 "Bayesian" = c(alpha_CPO_Prolific$Bayes$est$Bayes_alpha,
+                                alpha_CPO_MTurk$Bayes$est$Bayes_alpha,
+                                alpha_CPO_Combined$Bayes$est$Bayes_alpha), 
+                 row.names = c("Prolific", "MTurk", "Combined")),
+      caption = "Cronbach's alpha for Composite Political Orientation scale")
+
+```
+
+Both scales show excellent internal consistency.
+
+__Mean intergroup bias__
+
+The mean intergroup bias scale is composed of three variables:
+
+* The difference in ingroup and outgroup evaluative trait ratings (each in itself a rating scale with 6 items)
+* The difference in points allocated to ingroup and outgroup in the Tajfel matrices
+* The difference in ingroup and outgroup identification
+
+We compute Cronbach's alpha for the trait rating scales and the intergroup bias scale in the frequentist and Bayesian paradigm for the Prolific, MTurk, and combined sample.
+
+```{r}
+# Ingroup Evaluative Traits
+alpha_InTrait_Prolific <- strel(nhb1a[, c("RC_InTraits_1","InTraits_2","InTraits_3", "RC_InTraits_4","InTraits_5","RC_InTraits_6")], estimates = "alpha")
+alpha_InTrait_MTurk <- strel(nhb1b[, c("RC_InTraits_1","InTraits_2","InTraits_3", "RC_InTraits_4","InTraits_5","RC_InTraits_6")], estimates = "alpha")
+alpha_InTrait_Combined <- strel(nhb1[, c("RC_InTraits_1","InTraits_2","InTraits_3", "RC_InTraits_4","InTraits_5","RC_InTraits_6")], estimates = "alpha")
+
+# Outgroup Evaluative Traits
+alpha_OutTrait_Prolific <- strel(nhb1a[, c("RC_OutTraits_1","OutTraits_2","OutTraits_3", "RC_OutTraits_4","OutTraits_5","RC_OutTraits_6")], estimates = "alpha")
+alpha_OutTrait_MTurk <- strel(nhb1b[, c("RC_OutTraits_1","OutTraits_2","OutTraits_3", "RC_OutTraits_4","OutTraits_5","RC_OutTraits_6")], estimates = "alpha")
+alpha_OutTrait_Combined <- strel(nhb1[, c("RC_OutTraits_1","OutTraits_2","OutTraits_3", "RC_OutTraits_4","OutTraits_5","RC_OutTraits_6")], estimates = "alpha")
+
+# Mean intergroup bias
+alpha_Bias_Prolific <- strel(nhb1a[, c("z_total_ingroup_minus_outgroup_points", "z_ingroup_minus_outgroup_traits_positive", "z_ingroup_minus_outgroup_identify")], estimates = "alpha")
+alpha_Bias_MTurk <- strel(nhb1b[, c("z_total_ingroup_minus_outgroup_points", "z_ingroup_minus_outgroup_traits_positive", "z_ingroup_minus_outgroup_identify")], estimates = "alpha")
+alpha_Bias_Combined <- strel(nhb1[, c("z_total_ingroup_minus_outgroup_points", "z_ingroup_minus_outgroup_traits_positive", "z_ingroup_minus_outgroup_identify")], estimates = "alpha")
+
+# Print alpha in table
+kable(data.frame("frequentist" = c(alpha_InTrait_Prolific$freq$est$freq_alpha,
+                                   alpha_InTrait_MTurk$freq$est$freq_alpha, 
+                                   alpha_InTrait_Combined$freq$est$freq_alpha),
+                 "Bayesian" = c(alpha_InTrait_Prolific$Bayes$est$Bayes_alpha,
+                                alpha_InTrait_MTurk$Bayes$est$Bayes_alpha,
+                                alpha_InTrait_Combined$Bayes$est$Bayes_alpha), 
+                 row.names = c("Prolific", "MTurk", "Combined")),
+      caption = "Cronbach's alpha for Ingroup Evaluative Trait Rating")
+
+kable(data.frame("frequentist" = c(alpha_OutTrait_Prolific$freq$est$freq_alpha,
+                                   alpha_OutTrait_MTurk$freq$est$freq_alpha, 
+                                   alpha_OutTrait_Combined$freq$est$freq_alpha),
+                 "Bayesian" = c(alpha_OutTrait_Prolific$Bayes$est$Bayes_alpha,
+                                alpha_OutTrait_MTurk$Bayes$est$Bayes_alpha,
+                                alpha_OutTrait_Combined$Bayes$est$Bayes_alpha), 
+                 row.names = c("Prolific", "MTurk", "Combined")),
+      caption = "Cronbach's alpha for Outgroup Evaluative Trait Rating")
+
+kable(data.frame("frequentist" = c(alpha_Bias_Prolific$freq$est$freq_alpha,
+                                   alpha_Bias_MTurk$freq$est$freq_alpha, 
+                                   alpha_Bias_Combined$freq$est$freq_alpha),
+                 "Bayesian" = c(alpha_Bias_Prolific$Bayes$est$Bayes_alpha,
+                                alpha_Bias_MTurk$Bayes$est$Bayes_alpha,
+                                alpha_Bias_Combined$Bayes$est$Bayes_alpha), 
+                 row.names = c("Prolific", "MTurk", "Combined")),
+      caption = "Cronbach's alpha for Intergroup Bias")
+```
+
+The trait rating scales show good internal consistency, but the mean intergroup bias scale is not internally consistent ($\alpha << 0.70$). It was preregistered to conduct a factor analysis to identify subscales that exhibit sufficient reliability. However, with only three items, this would lead to identification issues because the model would be exactly identified and the factor loadings would be a function of the variance-covariance entries (see also [here](https://stats.stackexchange.com/questions/44440/is-it-acceptable-to-have-only-two-or-less-items-variables-loaded-by-a-factor)). It therefore seems more prudent to conduct the main analyses with all three variables that make up the score.
+
+Below is a correlation table that shows the correlations between the items:
+
+```{r}
+kable(data.frame(cor(nhb1a[, c("z_total_ingroup_minus_outgroup_points", 
+                   "z_ingroup_minus_outgroup_traits_positive", 
+                   "z_ingroup_minus_outgroup_identify")], use = "pairwise"), 
+                 row.names = c("Points", "Traits", "Identification")), 
+      digits = 3, 
+      col.names = c("Points", "Traits", "Identification"),
+      caption = "Prolific Sample")
+
+kable(data.frame(cor(nhb1b[, c("z_total_ingroup_minus_outgroup_points", 
+                   "z_ingroup_minus_outgroup_traits_positive", 
+                   "z_ingroup_minus_outgroup_identify")], use = "pairwise"), 
+                 row.names = c("Points", "Traits", "Identification")), 
+      digits = 3, 
+      col.names = c("Points", "Traits", "Identification"),
+      caption = "MTurk Sample")
+
+kable(data.frame(cor(nhb1[, c("z_total_ingroup_minus_outgroup_points", 
+                   "z_ingroup_minus_outgroup_traits_positive", 
+                   "z_ingroup_minus_outgroup_identify")], use = "pairwise"), 
+                 row.names = c("Points", "Traits", "Identification")), 
+      digits = 3, 
+      col.names = c("Points", "Traits", "Identification"),
+      caption = "Combined Sample")
+```
+
+Below, we plot the correlations in the Prolific and MTurk dataset. They show that there are no discernible non-linear patterns in the data and no lack of variability in the variables that could cause the low intercorrelations.
+
+```{r}
+# Prolific sample
+plot(nhb1a[, c("z_total_ingroup_minus_outgroup_points", 
+                   "z_ingroup_minus_outgroup_traits_positive", 
+                   "z_ingroup_minus_outgroup_identify")], pch=16)
+# MTurk sample
+plot(nhb1b[, c("z_total_ingroup_minus_outgroup_points", 
+                   "z_ingroup_minus_outgroup_traits_positive", 
+                   "z_ingroup_minus_outgroup_identify")], pch=16)
+```
+
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```

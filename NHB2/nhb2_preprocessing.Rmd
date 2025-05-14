@@ -1,0 +1,889 @@
+---
+title: "Preprocessing NHB2"
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Load Packages
+
+```{r setup}
+library(dplyr)
+```
+
+## Read in dataset
+
+```{r}
+nhb2 <- read.csv('../../data/nhb2_raw_data.csv') 
+nhb2 <- nhb2[-c(1:2), ] # skip two rows that contain column header info
+```
+
+## Remove data from survey testing trial runs
+
+```{r}
+nhb2 <- nhb2[nhb2$PROLIFIC_PID != "", ]
+```
+
+## Remove time and click recording variables
+
+These variables won't be analyzed as part of the study.
+
+```{r}
+nhb2 <- nhb2[, !grepl("timeRecord_", colnames(nhb2))]
+nhb2 <- nhb2[, !grepl("Click", colnames(nhb2))]
+nhb2 <- nhb2[, !grepl("Submit", colnames(nhb2))]
+```
+
+## Remove potentially identifiable variables from publicly shared dataset
+
+We remove personally identifiable information such as Prolific / MTurk IDs, location information, time stamps, and IP addresses from the publicly shared data to fulfill our duty of confidentiality to participants. The raw dataset can be obtained from any member of the research group upon reasonable request.
+
+```{r}
+nhb2 <- nhb2[, ! colnames(nhb2) %in% c("IPAddress", 
+                                       "RecipientFirstName",
+                                       "RecipientLastName",
+                                       "RecipientEmail",
+                                       "ExternalReference",
+                                       "LocationLatitude",
+                                       "LocationLongitude",
+                                       "prolific_id",
+                                       "mturkcode",
+                                       "PROLIFIC_PID",
+                                       "city",
+                                       "zip",
+                                       "workerId")]
+```
+
+## Exclude participants based on failed attention check
+
+```{r}
+ssbefore <- nrow(nhb2)
+nhb2 <- nhb2[nhb2$skyColor == 'purple', ]
+ssafter <- nrow(nhb2)
+```
+
+We recruited `r ssbefore` participants on Prolific. `r ssbefore-ssafter` participants were excluded because they failed the attention check. `r ssafter` participants remain in the sample.
+
+## Check if people correctly assigned themselves to their group
+
+Participants were asked: "Please indicate the group that you belong to by placing \"Me\" in the correct group". The allocation is recorded in the variables `AttCheckOrder1` and `AttCheckOrder2`. Only one response is collected per participant across both variables. Correct allocation is as follows:
+
+__AttCheckOrder1__
+
+    - if ingroup == "green", group 1 (AttCheckOrder1_1_GROUP) should not be empty
+    - if ingroup == "blue",  group 0 (AttCheckOrder1_0_GROUP) should not be empty
+    
+__AttCheckOrder2__
+
+    - if ingroup == "green", group 0 (AttnCheckOrder2_0_GROUP) should not be empty
+    - if ingroup == "blue",  group 1 (AttnCheckOrder2_1_GROUP) should not be empty
+
+```{r}
+# Create a new variable that records whether participants correctly assigned themselves (1 = yes, 0 = no)
+nhb2$AssignCheck <- case_when(
+  nhb2$ingroup=="green" & (nhb2$AttCheckOrder1_1_GROUP != "" | nhb2$AttnCheckOrder2_0_GROUP != "") ~ 1,
+  nhb2$ingroup=="blue" & (nhb2$AttCheckOrder1_0_GROUP != "" | nhb2$AttnCheckOrder2_1_GROUP != "") ~ 1,
+  TRUE ~ 0
+)
+```
+
+In total, `r sum(nhb2$AssignCheck == 0)` participants did not assign themselves to the correct group. 
+
+- `r sum(nhb2$AttCheckOrder1_1_GROUP == "" & nhb2$AttnCheckOrder2_0_GROUP == "" & nhb2$AttCheckOrder1_0_GROUP == "" & nhb2$AttnCheckOrder2_1_GROUP == "")` participant did not answer the question (i.e., they did not assign themselves to any group)
+- `r nrow(nhb2[nhb2$AssignCheck == 0 & nhb2$ingroup == "green" & (nhb2$AttCheckOrder1_0_GROUP != "" | nhb2$AttnCheckOrder2_1_GROUP != ""), ])` participants in the green group incorrectly assigned themselves to the blue group
+- `r nrow(nhb2[nhb2$AssignCheck == 0 & nhb2$ingroup == "blue" & (nhb2$AttCheckOrder1_1_GROUP != "" | nhb2$AttnCheckOrder2_0_GROUP != ""), ])` participants in the blue group incorrectly assigned themselves to the green group
+
+Since we did not preregister this as an exclusion criterion, we __will not exclude participants__ who allocated themselves in the wrong group. However, these numbers are important to contextualize data quality.
+
+## Demographics data cleaning
+
+Manually code open text responses for gender:
+
+```{r}
+nhb2$dem_Sex <- case_match(nhb2$dem_Sex,
+                           c("Male", "male", "Male ", "M", ".Male", "Man", 
+                             "MALE", "man") ~ "male",
+                           c("female", "Female", "woman", "cis woman", "Woman", 
+                             "FEMALE", "F", "Female ", "femal", "Famale", 
+                             "female ", "FEMALE ", "Cisgender woman", 
+                             "Female/woman","f") ~ "female",
+                           c("Transmasc") ~ "trans male",
+                           c("Agender", "nonbinary", "Questionong", 
+                             "Genderqueer", "Non-binary", 
+                             "Genderfluid") ~ "non-binary",
+                           .default = "missing"
+)
+```
+
+Recode Education
+
+```{r}
+# Code missing as NA and summarize professional and doctoral degree
+nhb2$dem_Education <- case_match(nhb2$dem_Education,
+                                 "" ~ NA,
+                                 c("Professional Degree (JD, MD)", 
+                                 "Doctoral Degree") ~ "Professional or Doctoral Degree (JD, MD, PhD)",
+                                  .default = nhb2$dem_Education)
+```
+
+Recode Race
+
+```{r}
+nhb2$dem_Race_recoded <- case_when(nhb2$dem_Race == "White" ~ "White",
+                                   nhb2$dem_Race == "Asian" ~ "Asian",
+                                   nhb2$dem_Race == "Black or African American" ~ "Black",
+                                   nhb2$dem_Race == "American Indian or Alaskan Native" ~ "Native",
+                                   nhb2$dem_Race == "Black or African American,White" ~ "Multiracial",
+                                   nhb2$dem_Race == "American Indian or Alaskan Native,White" ~ "Multiracial",
+                                   nhb2$dem_Race == "White,Asian" ~ "Multiracial",
+                                   nhb2$dem_Race == "White,Native Hawaiian or Other Pacific Islander" ~ "Multiracial",
+                                   nhb2$dem_Race == "Black or African American,White,Asian" ~ "Multiracial",
+                                   nhb2$dem_Race == "Black or African American,American Indian or Alaskan Native,White" ~ "Multiracial",
+                                   nhb2$dem_Race == "Black or African American,American Indian or Alaskan Native,White,Asian,Native Hawaiian or Other Pacific Islander" ~ "Multiracial",
+                                   nhb2$dem_Race == "Black or African American,American Indian or Alaskan Native,White,Asian" ~ "Multiracial",
+                                   nhb2$dem_Race == "White,Asian,Other (please specify):" ~ "Multiracial",
+                                   nhb2$dem_Race == "White,Other (please specify):" & nhb2$dem_Race_7_TEXT %in% c("hispanic", "Hispanic/Latino", "latine", "Hispanic", "iraqi", "Native American") ~ "Multiracial",
+                                   nhb2$dem_Race == "Other (please specify):" & nhb2$dem_Race_7_TEXT %in% c("Latinx", "Hispanic/Latin", "hispanic", "Hispanic", "Latinx", "Hispanic ", "Latino", "Hispanic/Latino", "Latina", "I am Mexican, I hate identifying as white") ~ "Hispanic",
+                                   nhb2$dem_Race == "Other (please specify):" & nhb2$dem_Race_7_TEXT %in% c("Multiracial", "Latino/White ", "Asian/African/American", "multiracial", "mixed", "Native American/Latinx/Caucasian", "Mexican and Filipino", "two or more races", "Mestizo") ~ "Multiracial",
+                                   nhb2$dem_Race == "Other (please specify):" & nhb2$dem_Race_7_TEXT %in% c("Middle Eastern", "Caribbean/West Indian", "Ashkenazi and Georgian (the country) Jewish", "Arab", "Hebrew") ~ "Other Non-White",
+                                   nhb2$dem_Race == "Native Hawaiian or Other Pacific Islander,Other (please specify):" & nhb2$dem_Race_7_TEXT %in% c("Hispanic") ~ "Multiracial",
+                                   nhb2$dem_Race == "Other (please specify):" & nhb2$dem_Race_7_TEXT %in% c("indigenous", "Indigenous American") ~ "Native",
+                                   
+                                    .default = "Did not specify"
+                                   )
+```
+
+## Calculate scale values for political ideology / extremity
+
+SECS scale
+
+```{r}
+# Code missing as NA
+SECSmissingValues <- which(nhb2[grepl("SECS", colnames(nhb2))] == "", 
+                           arr.ind = TRUE)
+nhb2[grepl("SECS", colnames(nhb2))][SECSmissingValues] <- NA
+
+# Change variable type to numeric
+nhb2[grepl("SECS", colnames(nhb2))] <- apply(nhb2[grepl("SECS", colnames(nhb2))], 2, as.numeric)
+
+# Recode item 1 and 5 such that higher values = more conservative
+nhb2 <- nhb2 %>%
+  mutate(RC_SECS_1 = 100 - SECS_1,
+         RC_SECS_5 = 100 - SECS_5)
+
+# Compute item means per participant
+nhb2$mean_SECS <- rowMeans(nhb2[,c("RC_SECS_1",
+                                   paste0("SECS_", 2:4), 
+                                   "RC_SECS_5",
+                                   paste0("SECS_", 6:12))], na.rm = TRUE)
+
+```
+
+Recode economic orientation item
+
+```{r}
+nhb2$EconOrient<-case_match(nhb2$EconOrient,
+                            "Extremely Liberal\n1\n" ~ 1,
+                            "2" ~ 2, 
+                            "3" ~ 3,
+                            "4" ~ 4,
+                            "Moderate\n5\n" ~ 5,
+                            "6" ~ 6,
+                            "7" ~ 7,
+                            "8" ~ 8,
+                            "Extremely Conservative\n9\n" ~ 9,
+                            "" ~ NA_real_)
+```
+
+Recode social orientation item
+
+```{r}
+nhb2$SocOrient<-case_match(nhb2$SocOrient,
+                           "Extremely Liberal\n1\n" ~ 1,
+                           "2" ~ 2, 
+                           "3" ~ 3,
+                           "4" ~ 4,
+                           "Moderate\n5\n" ~ 5,
+                           "6" ~ 6,
+                           "7" ~ 7,
+                           "8" ~ 8,
+                           "Extremely Conservative\n9\n" ~ 9,
+                           "" ~ NA_real_)
+```
+
+Recode political orientation item
+
+```{r}
+nhb2$PolOrient<-case_match(nhb2$PolOrient,
+                           "Extremely Liberal\n1\n" ~ 1,
+                           "2" ~ 2, 
+                           "3" ~ 3,
+                           "4" ~ 4,
+                           "Moderate\n5\n" ~ 5,
+                           "6" ~ 6,
+                           "7" ~ 7,
+                           "8" ~ 8,
+                           "Extremely Conservative\n9\n" ~ 9,
+                           "" ~ NA_real_)
+```
+
+Standardize the four political orientation variables
+
+```{r}
+nhb2$z_mean_SECS <- scale(nhb2$mean_SECS)
+nhb2$z_EconOrient <- scale(nhb2$EconOrient)
+nhb2$z_SocOrient <- scale(nhb2$SocOrient)
+nhb2$z_PolOrient <- scale(nhb2$PolOrient)
+```
+
+Compute composite political orientation variables
+
+```{r}
+nhb2$composite_political_orientation <- rowMeans(nhb2[, grepl("z_", colnames(nhb2))], na.rm = TRUE)
+nhb2$self_identification_political <- rowMeans(nhb2[, c("z_PolOrient","z_EconOrient","z_SocOrient")], na.rm = TRUE)
+```
+
+Standardize composite political orientation variables
+
+```{r}
+nhb2$composite_political_orientation_z = scale(nhb2$composite_political_orientation)
+nhb2$self_identification_political_z = scale(nhb2$self_identification_political)
+```
+
+Compute ideological extremity measure
+
+```{r}
+# Compute absolute distance from scale midpoint
+nhb2$PolOrientExtremity <- abs(5-nhb2$PolOrient)
+nhb2$SocOrientExtremity <- abs(5-nhb2$SocOrient)
+nhb2$EconOrientExtremity <- abs(5-nhb2$EconOrient)
+nhb2$SECSExtremity <- abs(50-nhb2$mean_SECS)
+
+# Standardize extremity variables
+nhb2$z_PolOrientExtremity <- scale(nhb2$PolOrientExtremity)
+nhb2$z_SocOrientExtremity <- scale(nhb2$SocOrientExtremity)
+nhb2$z_EconOrientExtremity <- scale(nhb2$EconOrientExtremity)
+nhb2$z_SECSExtremity <- scale(nhb2$SECSExtremity)
+
+# Compute mean ideological extremity
+nhb2$composite_ideological_extremity <- rowMeans(nhb2[, c("z_PolOrientExtremity", "z_SocOrientExtremity", "z_EconOrientExtremity", "z_SECSExtremity")], na.rm = TRUE)
+nhb2$selfIDExtremity <- rowMeans(nhb2[, c("z_PolOrientExtremity", "z_SocOrientExtremity", "z_EconOrientExtremity")], na.rm = TRUE)
+```
+
+Standardize ideological extremity variables
+
+```{r}
+nhb2$composite_ideological_extremity_z <- scale(nhb2$composite_ideological_extremity)
+nhb2$selfIDExtremity_z <- scale(nhb2$selfIDExtremity)
+```
+
+## Calculate group identification measures
+
+Recode ingroup and outgroup identification
+
+```{r}
+nhb2$IngroupIdentify <- case_match(nhb2$IngroupIdentify,
+                                       "Strongly Disagree\n1\n" ~ 1,
+                                       "2" ~ 2,
+                                       "3" ~ 3,
+                                       "4" ~ 4,
+                                       "5" ~ 5,
+                                       "6" ~ 6,
+                                       "Strongly Agree\n7\n" ~ 7)
+
+nhb2$OutgroupIdentify <- case_match(nhb2$OutgroupIdentify,
+                                     "Strongly Disagree\n1\n" ~ 1,
+                                     "2" ~ 2,
+                                     "3" ~ 3,
+                                     "4" ~ 4,
+                                     "5" ~ 5,
+                                     "6" ~ 6,
+                                     "Strongly Agree\n7\n" ~ 7)
+```
+
+Standardize ingroup and outgroup identification measures
+
+```{r}
+nhb2$z_IngroupIdentify <- scale(nhb2$IngroupIdentify)
+nhb2$z_OutgroupIdentify <- scale(nhb2$OutgroupIdentify)
+```
+
+Calculate (standardized) difference between ingroup and outgroup identification
+
+```{r}
+nhb2$ingroup_minus_outgroup_identify <- nhb2$IngroupIdentify - nhb2$OutgroupIdentify
+nhb2$z_ingroup_minus_outgroup_identify <- scale(nhb2$ingroup_minus_outgroup_identify)
+```
+
+## Compute evaluative trait ratings
+
+Recode ingroup and outgroup trait evaluation ratings
+
+```{r}
+# Define function for recoding
+traitrecode <- function(item){
+  case_match(item,
+             "Not at all\n1\n" ~ 1,
+             "2" ~  2,
+             "3" ~  3,
+             "4" ~  4,
+             "5" ~  5,
+             "6" ~  6,
+             "Very much\n7\n" ~  7)
+}
+
+# Convert scores to numeric values
+nhb2$InTraits_1 <- traitrecode(nhb2$InTraits_1)
+nhb2$InTraits_2 <- traitrecode(nhb2$InTraits_2)
+nhb2$InTraits_3 <- traitrecode(nhb2$InTraits_3)
+nhb2$InTraits_4 <- traitrecode(nhb2$InTraits_4)
+nhb2$InTraits_5 <- traitrecode(nhb2$InTraits_5)
+nhb2$InTraits_6 <- traitrecode(nhb2$InTraits_6)
+nhb2$OutTraits_1 <- traitrecode(nhb2$OutTraits_1)
+nhb2$OutTraits_2 <- traitrecode(nhb2$OutTraits_2)
+nhb2$OutTraits_3 <- traitrecode(nhb2$OutTraits_3)
+nhb2$OutTraits_4 <- traitrecode(nhb2$OutTraits_4)
+nhb2$OutTraits_5 <- traitrecode(nhb2$OutTraits_5)
+nhb2$OutTraits_6 <- traitrecode(nhb2$OutTraits_6)
+
+# Recode negative trait ratings so that higher scores = more positive evaluations
+nhb2$RC_InTraits_1 <- 8-nhb2$InTraits_1
+nhb2$RC_InTraits_4 <- 8-nhb2$InTraits_4
+nhb2$RC_InTraits_6 <- 8-nhb2$InTraits_6
+nhb2$RC_OutTraits_1 <- 8-nhb2$OutTraits_1
+nhb2$RC_OutTraits_4 <- 8-nhb2$OutTraits_4
+nhb2$RC_OutTraits_6 <- 8-nhb2$OutTraits_6
+```
+
+Calculate mean evaluative trait ratings for ingroups and outgroups, such that higher scores = more positive evaluations.
+
+```{r}
+nhb2$mean_ingroup_traits_positive <- rowMeans(nhb2[, c("RC_InTraits_1","InTraits_2","InTraits_3", "RC_InTraits_4","InTraits_5","RC_InTraits_6")], na.rm = TRUE)
+nhb2$mean_outgroup_traits_positive <- rowMeans(nhb2[, c("RC_OutTraits_1","OutTraits_2","OutTraits_3", "RC_OutTraits_4","OutTraits_5","RC_OutTraits_6")], na.rm = TRUE)
+```
+
+Standardize mean evaluative trait ratings
+
+```{r}
+nhb2$z_IngroupTraits <- scale(nhb2$mean_ingroup_traits_positive)
+nhb2$z_OutgroupTraits <- scale(nhb2$mean_outgroup_traits_positive)
+```
+
+Calculate the (standardized) difference score between positivity of ingroup trait ratings and outgroups trait ratings
+
+```{r}
+nhb2$ingroup_minus_outgroup_traits_positive <- nhb2$mean_ingroup_traits_positive - nhb2$mean_outgroup_traits_positive
+nhb2$z_ingroup_minus_outgroup_traits_positive <- scale(nhb2$ingroup_minus_outgroup_traits_positive)
+```
+
+## Tajfel matrices
+
+Recode Tajfel matrix choices to number of points awarded to ingroup and outgroup
+
+```{r}
+# Matrix 1: FAV vs. MJP OPPOSED
+nhb2$MatrixA_O_ingroup_points <- case_match(nhb2$MatrixA_O,
+                                             "A" ~ 19,
+                                             "B" ~ 18,
+                                             "C" ~ 17,
+                                             "D" ~ 16,
+                                             "E" ~ 15,
+                                             "F" ~ 14,
+                                             "G" ~ 13,
+                                             "H" ~ 12,
+                                             "I" ~ 11,
+                                             "J" ~ 10,
+                                             "K" ~ 9,
+                                             "L" ~ 8,
+                                             "M" ~ 7)
+nhb2$MatrixA_O_outgroup_points <- case_match(nhb2$MatrixA_O,
+                                              "A" ~ 1,
+                                              "B" ~ 3,
+                                              "C" ~ 5,
+                                              "D" ~ 7,
+                                              "E" ~ 9,
+                                              "F" ~ 11,
+                                              "G" ~ 13,
+                                              "H" ~ 15,
+                                              "I" ~ 17,
+                                              "J" ~ 19,
+                                              "K" ~ 21,
+                                              "L" ~ 23,
+                                              "M"~ 25)
+
+# Matrix 2: FAV vs. MJP Together
+nhb2$MatrixA_T_ingroup_points <- case_match(nhb2$MatrixA_T,
+                                             "A" ~ 25,
+                                             "B" ~ 23,
+                                             "C" ~ 21,
+                                             "D" ~ 19,
+                                             "E" ~ 17,
+                                             "F" ~ 15,
+                                             "G" ~ 13,
+                                             "H" ~ 11,
+                                             "I" ~ 9,
+                                             "J" ~ 7,
+                                             "K" ~ 5,
+                                             "L" ~ 3,
+                                             "M"~ 1)
+nhb2$MatrixA_T_outgroup_points <- case_match(nhb2$MatrixA_T,
+                                              "A" ~ 7,
+                                              "B" ~ 8,
+                                              "C" ~ 9,
+                                              "D" ~ 10,
+                                              "E" ~ 11,
+                                              "F" ~ 12,
+                                              "G" ~ 13,
+                                              "H" ~ 14,
+                                              "I" ~ 15,
+                                              "J" ~ 16,
+                                              "K" ~ 17,
+                                              "L" ~ 18,
+                                              "M" ~ 19)
+
+# Matrix 3: MD vs. MIP+MJP opposed
+nhb2$MatrixB_O_ingroup_points <- case_match(nhb2$MatrixB_O,
+                                             "A" ~ 19,
+                                             "B" ~ 18,
+                                             "C" ~ 17,
+                                             "D" ~ 16,
+                                             "E" ~ 15,
+                                             "F" ~ 14,
+                                             "G" ~ 13,
+                                             "H" ~ 12,
+                                             "I" ~ 11,
+                                             "J" ~ 10,
+                                             "K" ~ 9,
+                                             "L" ~ 8,
+                                             "M" ~ 7)
+nhb2$MatrixB_O_outgroup_points <- case_match(nhb2$MatrixB_O,
+                                              "A" ~ 25,
+                                              "B" ~ 23,
+                                              "C" ~ 21,
+                                              "D" ~ 19,
+                                              "E" ~ 17,
+                                              "F" ~ 15,
+                                              "G" ~ 13,
+                                              "H" ~ 11,
+                                              "I" ~ 9,
+                                              "J" ~ 7,
+                                              "K" ~ 5,
+                                              "L" ~ 3,
+                                              "M" ~ 1)
+
+# Matrix 4: MD vs. MIP+MJP Together
+nhb2$MatrixB_T_ingroup_points <- case_match(nhb2$MatrixB_T,
+                                             "A" ~ 1,
+                                             "B" ~ 3,
+                                             "C" ~ 5,
+                                             "D" ~ 7,
+                                             "E" ~ 9,
+                                             "F" ~ 11,
+                                             "G" ~ 13,
+                                             "H" ~ 15,
+                                             "I" ~ 17,
+                                             "J" ~ 19,
+                                             "K" ~ 21,
+                                             "L" ~ 23,
+                                             "M" ~ 25)
+nhb2$MatrixB_T_outgroup_points <- case_match(nhb2$MatrixB_T,
+                                              "A" ~ 7,
+                                              "B" ~ 8,
+                                              "C" ~ 9,
+                                              "D" ~ 10,
+                                              "E" ~ 11,
+                                              "F" ~ 12,
+                                              "G" ~ 13,
+                                              "H" ~ 14,
+                                              "I" ~ 15,
+                                              "J" ~ 16,
+                                              "K" ~ 17,
+                                              "L" ~ 18,
+                                              "M" ~ 19)
+
+# Matrix 5: P Vs. FAV Opposed
+nhb2$MatrixC_O_ingroup_points <- case_match(nhb2$MatrixC_O,
+                                             "A" ~ 16,
+                                             "B" ~ 17,
+                                             "C" ~ 18,
+                                             "D" ~ 19,
+                                             "E" ~ 20,
+                                             "F" ~ 21,
+                                             "G" ~ 22,
+                                             "H" ~ 23,
+                                             "I" ~ 24,
+                                             "J" ~ 25,
+                                             "K" ~ 26,
+                                             "L" ~ 27,
+                                             "M" ~ 28)
+nhb2$MatrixC_O_outgroup_points <- case_match(nhb2$MatrixC_O,
+                                              "A" ~ 16,
+                                              "B" ~ 15,
+                                              "C" ~ 14,
+                                              "D" ~ 13,
+                                              "E" ~ 12,
+                                              "F" ~ 11,
+                                              "G" ~ 10,
+                                              "H" ~ 9,
+                                              "I" ~ 8,
+                                              "J" ~ 7,
+                                              "K" ~ 6,
+                                              "L" ~ 5,
+                                              "M" ~ 4)
+
+# Matrix 6: P Vs. FAV Together
+nhb2$MatrixC_T_ingroup_points <- case_match(nhb2$MatrixC_T,
+                                             "A" ~ 4,
+                                             "B" ~ 5,
+                                             "C" ~ 6,
+                                             "D" ~ 7,
+                                             "E" ~ 8,
+                                             "F" ~ 9,
+                                             "G" ~ 10,
+                                             "H" ~ 11,
+                                             "I" ~ 12,
+                                             "J" ~ 13,
+                                             "K" ~ 14,
+                                             "L" ~ 15,
+                                             "M" ~ 16)
+nhb2$MatrixC_T_outgroup_points <- case_match(nhb2$MatrixC_T,
+                                              "A" ~ 28,
+                                              "B" ~ 27,
+                                              "C" ~ 26,
+                                              "D" ~ 25,
+                                              "E" ~ 24,
+                                              "F" ~ 23,
+                                              "G" ~ 22,
+                                              "H" ~ 21,
+                                              "I" ~ 20,
+                                              "J" ~ 19,
+                                              "K" ~ 18,
+                                              "L" ~ 17,
+                                              "M" ~ 16)
+```
+
+Calculate total number of ingroup and outgroup points
+
+```{r}
+nhb2$total_ingroup_points <- rowSums(nhb2[, c("MatrixA_O_ingroup_points","MatrixA_T_ingroup_points","MatrixB_O_ingroup_points","MatrixB_T_ingroup_points","MatrixC_O_ingroup_points","MatrixC_T_ingroup_points")])
+nhb2$total_outgroup_points <- rowSums(nhb2[, c("MatrixA_O_outgroup_points","MatrixA_T_outgroup_points","MatrixB_O_outgroup_points","MatrixB_T_outgroup_points","MatrixC_O_outgroup_points","MatrixC_T_outgroup_points")])
+```
+
+Standardize total number of ingroup and outgroup points
+
+```{r}
+nhb2$z_IngroupPoints <- scale(nhb2$total_ingroup_points)
+nhb2$z_OutgroupPoints <- scale(nhb2$total_outgroup_points)
+```
+
+Calculate (standardized) difference between total number of points awarded to ingroup and outgroup
+
+```{r}
+nhb2$total_ingroup_minus_outgroup_points <- nhb2$total_ingroup_points-nhb2$total_outgroup_points
+nhb2$z_total_ingroup_minus_outgroup_points <- scale(nhb2$total_ingroup_minus_outgroup_points)
+```
+
+Calculating relative pull factors
+
+```{r}
+# Matrix A: Pull of FAV on MJP and vice versa
+
+# Ranking of opposed and together matrix
+nhb2$MatrixA_O_Ranking <- case_match(nhb2$MatrixA_O,
+                                      'M' ~ 0,
+                                      'L' ~ 1,
+                                      'K' ~ 2,
+                                      'J' ~ 3,
+                                      'I' ~ 4,
+                                      'H' ~ 5,
+                                      'G' ~ 6,
+                                      'F' ~ 7,
+                                      'E' ~ 8,
+                                      'D' ~ 9,
+                                      'C' ~ 10,
+                                      'B' ~ 11,
+                                      'A' ~ 12)
+nhb2$MatrixA_T_Ranking <- case_match(nhb2$MatrixA_T,
+                                      'M' ~ 12,
+                                      'L' ~ 11,
+                                      'K' ~ 10,
+                                      'J' ~ 9,
+                                      'I' ~ 8,
+                                      'H' ~ 7,
+                                      'G' ~ 6,
+                                      'F' ~ 5,
+                                      'E' ~ 4,
+                                      'D' ~ 3,
+                                      'C' ~ 2,
+                                      'B' ~ 1,
+                                      'A' ~ 0)
+
+##Subtract to get pulls
+nhb2$Pull_FAVonMJP<-nhb2$MatrixA_O_Ranking-nhb2$MatrixA_T_Ranking
+nhb2$Pull_MJPonFAV<-(12-nhb2$MatrixA_O_Ranking)-nhb2$MatrixA_T_Ranking
+
+# Matrix B: Pull of MD on Profit and vice versa
+
+# Ranking for opposed and together matrix
+nhb2$MatrixB_O_Ranking <- case_match(nhb2$MatrixB_O,
+                                      'M' ~ 12,
+                                      'L' ~ 11,
+                                      'K' ~ 10,
+                                      'J' ~ 9,
+                                      'I' ~ 8,
+                                      'H' ~ 7,
+                                      'G' ~ 6,
+                                      'F' ~ 5,
+                                      'E' ~ 4,
+                                      'D' ~ 3,
+                                      'C' ~ 2,
+                                      'B' ~ 1,
+                                      'A' ~ 0)
+nhb2$MatrixB_T_Ranking <- case_match(nhb2$MatrixB_T,
+                                      'M' ~ 0,
+                                      'L' ~ 1,
+                                      'K' ~ 2,
+                                      'J' ~ 3,
+                                      'I' ~ 4,
+                                      'H' ~ 5,
+                                      'G' ~ 6,
+                                      'F' ~ 7,
+                                      'E' ~ 8,
+                                      'D' ~ 9,
+                                      'C' ~ 10,
+                                      'B' ~ 11,
+                                      'A' ~ 12)
+
+
+# Subtract to get pulls
+nhb2$Pull_MDonProfit<-nhb2$MatrixB_O_Ranking-nhb2$MatrixB_T_Ranking
+nhb2$Pull_ProfitonMD<-(12-nhb2$MatrixB_O_Ranking)-nhb2$MatrixB_T_Ranking
+
+# Matrix C: Pull of P on FAV and vice versa
+
+# Ranking of opposed and together matrix
+nhb2$MatrixC_O_Ranking <- case_match(nhb2$MatrixC_O,
+                                      'M' ~ 0,
+                                      'L' ~ 1,
+                                      'K' ~ 2,
+                                      'J' ~ 3,
+                                      'I' ~ 4,
+                                      'H' ~ 5,
+                                      'G' ~ 6,
+                                      'F' ~ 7,
+                                      'E' ~ 8,
+                                      'D' ~ 9,
+                                      'C' ~ 10,
+                                      'B' ~ 11,
+                                      'A' ~ 12)
+nhb2$MatrixC_T_Ranking <- case_match(nhb2$MatrixC_T,
+                                      'M' ~ 0,
+                                      'L' ~ 1,
+                                      'K' ~ 2,
+                                      'J' ~ 3,
+                                      'I' ~ 4,
+                                      'H' ~ 5,
+                                      'G' ~ 6,
+                                      'F' ~ 7,
+                                      'E' ~ 8,
+                                      'D' ~ 9,
+                                      'C' ~ 10,
+                                      'B' ~ 11,
+                                      'A' ~ 12)
+
+##Subtract to get pulls
+nhb2$Pull_PonFAV<-nhb2$MatrixC_O_Ranking-nhb2$MatrixC_T_Ranking
+nhb2$Pull_FAVonP<-(12-nhb2$MatrixC_O_Ranking)-nhb2$MatrixC_T_Ranking
+```
+
+## Create composite intergroup bias measure
+
+(Standardized) mean intergroup bias using the three standardized measures
+
+```{r}
+nhb2$mean_intergroup_bias <- rowMeans(nhb2[, c("z_total_ingroup_minus_outgroup_points", "z_ingroup_minus_outgroup_traits_positive", "z_ingroup_minus_outgroup_identify")], na.rm = TRUE)
+nhb2$mean_intergroup_bias_z <- scale(nhb2$mean_intergroup_bias)
+```
+
+## Create separate ingroup/outgroup indices of intergroup bias
+
+```{r}
+nhb2$IngroupIndex <- rowMeans(nhb2[, c("z_IngroupIdentify","z_IngroupTraits","z_IngroupPoints")], na.rm = TRUE)
+nhb2$IngroupIndex_z <- scale(nhb2$IngroupIndex)
+
+nhb2$OutgroupIndex <- rowMeans(nhb2[, c("z_OutgroupIdentify","z_OutgroupTraits","z_OutgroupPoints")], na.rm = TRUE)
+nhb2$OutgroupIndex_z <- scale(nhb2$OutgroupIndex)
+```
+
+## Compute moral foundations scores
+
+```{r}
+# Define function for recoding
+mfrecode <- function(item, part){
+  if(part == 2){
+    case_match(item,
+               "Strongly Disagree" ~ 0,
+               "Moderately Disagree" ~ 1,
+               "Slightly Disagree" ~ 2,
+               "Slightly Agree" ~ 3,
+               "Moderately Agree" ~ 4,
+               "Strongly Agree" ~ 5,
+               "" ~ NA_real_)
+  } else if (part == 1) {
+      case_match(item,
+                 "Not at all Relevant" ~ 0,
+                 "Not very Relevant" ~ 1,
+                 "Slightly Relevant" ~ 2,
+                 "Somewhat Relevant" ~ 3,
+                 "Very Relevant" ~ 4,
+                 "Extremely Relevant" ~ 5,
+                 "" ~ NA_real_)
+    }
+}
+
+# Recode items Part I                                      
+nhb2$mf_pt1_1 <- mfrecode(nhb2$mf_pt1_1, 1)
+nhb2$mf_pt1_2 <- mfrecode(nhb2$mf_pt1_2, 1)
+nhb2$mf_pt1_3 <- mfrecode(nhb2$mf_pt1_3, 1)
+nhb2$mf_pt1_4 <- mfrecode(nhb2$mf_pt1_4, 1)
+nhb2$mf_pt1_5 <- mfrecode(nhb2$mf_pt1_5, 1)
+nhb2$mf_pt1_6 <- mfrecode(nhb2$mf_pt1_6, 1)
+nhb2$mf_pt1_7 <- mfrecode(nhb2$mf_pt1_7, 1)
+nhb2$mf_pt1_8 <- mfrecode(nhb2$mf_pt1_8, 1)
+nhb2$mf_pt1_9 <- mfrecode(nhb2$mf_pt1_9, 1)
+
+# Recode items Part II
+nhb2$mf_pt2_1 <- mfrecode(nhb2$mf_pt2_1, 2)
+nhb2$mf_pt2_2 <- mfrecode(nhb2$mf_pt2_2, 2)
+nhb2$mf_pt2_3 <- mfrecode(nhb2$mf_pt2_3, 2)
+nhb2$mf_pt2_4 <- mfrecode(nhb2$mf_pt2_4, 2)
+nhb2$mf_pt2_5 <- mfrecode(nhb2$mf_pt2_5, 2)
+nhb2$mf_pt2_6 <- mfrecode(nhb2$mf_pt2_6, 2)
+nhb2$mf_pt2_7 <- mfrecode(nhb2$mf_pt2_7, 2)
+nhb2$mf_pt2_8 <- mfrecode(nhb2$mf_pt2_8, 2)
+nhb2$mf_pt2_9 <- mfrecode(nhb2$mf_pt2_9, 2)
+
+# Compute subscale Ingroup Loyalty
+nhb2$mf_loyalty <- rowMeans(nhb2[, c("mf_pt1_1", "mf_pt1_4", "mf_pt1_7", "mf_pt2_1", "mf_pt2_4", "mf_pt2_7")])
+
+# Compute subscale Authority
+nhb2$mf_authority <- rowMeans(nhb2[, c("mf_pt1_2", "mf_pt1_5", "mf_pt1_8", "mf_pt2_2", "mf_pt2_5", "mf_pt2_8")])
+
+# Compute subscale Purity
+nhb2$mf_purity <- rowMeans(nhb2[, c("mf_pt1_3", "mf_pt1_6", "mf_pt1_9", "mf_pt2_3", "mf_pt2_6", "mf_pt2_9")])
+
+# Compute total score
+nhb2$mf_total <- rowMeans(nhb2[, grepl("mf_pt", colnames(nhb2))], na.rm = TRUE)
+
+# Standardize all moral foundations scale scores
+nhb2$mf_loyalty_z <- scale(nhb2$mf_loyalty)
+nhb2$mf_authority_z <- scale(nhb2$mf_authority)
+nhb2$mf_purity_z <- scale(nhb2$mf_purity)
+nhb2$mf_total_z <- scale(nhb2$mf_total)
+```
+
+## Compute Need for Closure score
+
+```{r}
+# Define function for recoding
+nfccrecode <- function(item){
+  case_match(item,
+               "Strongly Disagree" ~ 1,
+               "Moderately Disagree" ~ 2,
+               "Slightly Disagree" ~ 3,
+               "Slightly Agree" ~ 4,
+               "Moderately Agree" ~ 5,
+               "Strongly Agree" ~ 6,
+               "" ~ NA_real_)
+}
+
+# Recode items
+nhb2$NFCC_1 <- nfccrecode(nhb2$NFCC_1)
+nhb2$NFCC_2 <- nfccrecode(nhb2$NFCC_2)
+nhb2$NFCC_3 <- nfccrecode(nhb2$NFCC_3)
+nhb2$NFCC_4 <- nfccrecode(nhb2$NFCC_4)
+nhb2$NFCC_5 <- nfccrecode(nhb2$NFCC_5)
+nhb2$NFCC_6 <- nfccrecode(nhb2$NFCC_6)
+nhb2$NFCC_7 <- nfccrecode(nhb2$NFCC_7)
+nhb2$NFCC_8 <- nfccrecode(nhb2$NFCC_8)
+nhb2$NFCC_9 <- nfccrecode(nhb2$NFCC_9)
+nhb2$NFCC_10 <- nfccrecode(nhb2$NFCC_10)
+nhb2$NFCC_11 <- nfccrecode(nhb2$NFCC_11)
+nhb2$NFCC_12 <- nfccrecode(nhb2$NFCC_12)
+nhb2$NFCC_13 <- nfccrecode(nhb2$NFCC_13)
+nhb2$NFCC_14 <- nfccrecode(nhb2$NFCC_14)
+nhb2$NFCC_15 <- nfccrecode(nhb2$NFCC_15)
+
+# Compute total score
+nhb2$nfcc_total <- rowMeans(nhb2[, grepl("NFCC", colnames(nhb2))], na.rm = TRUE)
+
+# Standardize score
+nhb2$nfcc_total_z <- scale(nhb2$nfcc_total)
+```
+
+## Compute norms scale (adapted from Paluck & Shepherd)
+
+```{r}
+# Recode items
+nhb2$norms_amer_accept <- case_match(nhb2$norms_amer_accept,
+                                     "Not at all 1" ~ 1,
+                                     "2" ~ 2,
+                                     "3" ~ 3,
+                                     "4" ~ 4,
+                                     "5" ~ 5,
+                                     "6" ~ 6,
+                                     "Very much 7" ~ 7,
+                                     "" ~ NA_real_)
+
+nhb2$norms_amer_express <- case_match(nhb2$norms_amer_express,
+                                     "Not at all 1" ~ 1,
+                                     "2" ~ 2,
+                                     "3" ~ 3,
+                                     "4" ~ 4,
+                                     "5" ~ 5,
+                                     "6" ~ 6,
+                                     "Very much 7" ~ 7,
+                                     "" ~ NA_real_)
+
+nhb2$norms_admire_accept <- case_match(nhb2$norms_admire_accept,
+                                     "Not at all 1" ~ 1,
+                                     "2" ~ 2,
+                                     "3" ~ 3,
+                                     "4" ~ 4,
+                                     "5" ~ 5,
+                                     "6" ~ 6,
+                                     "Very much 7" ~ 7,
+                                     "" ~ NA_real_)
+
+nhb2$norms_admire_express <- case_match(nhb2$norms_admire_express,
+                                     "Not at all 1" ~ 1,
+                                     "2" ~ 2,
+                                     "3" ~ 3,
+                                     "4" ~ 4,
+                                     "5" ~ 5,
+                                     "6" ~ 6,
+                                     "Very much 7" ~ 7,
+                                     "" ~ NA_real_)
+
+# Compute total score
+nhb2$norms_total <- rowMeans(nhb2[, c("norms_amer_accept",
+                                      "norms_amer_express",
+                                      "norms_admire_accept",
+                                      "norms_admire_express")], na.rm = TRUE)
+
+# Standardize total score
+nhb2$norms_total_z <- scale(nhb2$norms_total)
+```
+
+## Save processed data
+
+```{r}
+write.csv(nhb2, "../../data/nhb2_processed.csv")
+```
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```
+

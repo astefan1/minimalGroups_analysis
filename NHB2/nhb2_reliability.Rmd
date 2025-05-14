@@ -1,0 +1,120 @@
+---
+title: "Reliability Analyses NHB2"
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(Bayesrel)
+```
+
+## Read in data
+
+```{r}
+nhb2 <- read.csv('../../data/nhb2_processed.csv')
+```
+
+## Compute scale reliability scores
+
+The main confirmatory hypotheses that are tested in the second study involve the following scales:
+
+* Composite political orientation
+* Mean intergroup bias
+* Ingroup norms
+* Moral foundations
+* Need for cognitive control
+
+### Composite political orientation
+
+The composite political orientation scale is computed as the average of the social and economic conservativeness scale (SEC) as well as three items measuring economic, social, and political orientation. We compute Cronbach's alpha for the SEC and the composite political orientation scale in the frequentist and Bayesian paradigm.
+
+```{r}
+# SEC reliability
+strel(nhb2[,c("RC_SECS_1", paste0("SECS_", 2:4), "RC_SECS_5", paste0("SECS_", 6:12))], estimates = "alpha")
+
+# Composite political orientation scale
+strel(nhb2[, c("z_mean_SECS", "z_EconOrient", "z_SocOrient", "z_PolOrient")], estimates = "alpha")
+```
+Both scales show excellent internal consistency.
+
+### Mean intergroup bias
+
+The mean intergroup bias scale is composed of three variables:
+
+* The difference in ingroup and outgroup evaluative trait ratings (each in itself a rating scale with 6 items)
+* The difference in points allocated to ingroup and outgroup in the Tajfel matrices
+* The difference in ingroup and outgroup identification
+
+We compute Cronbach's alpha for the trait rating scales and the intergroup bias scale in the frequentist and Bayesian paradigm.
+
+```{r}
+# Ingroup Evaluative Traits
+strel(nhb2[, c("RC_InTraits_1","InTraits_2","InTraits_3", "RC_InTraits_4","InTraits_5","RC_InTraits_6")], estimates = "alpha")
+
+# Outgroup Evaluative Traits
+strel(nhb2[, c("RC_OutTraits_1","OutTraits_2","OutTraits_3", "RC_OutTraits_4","OutTraits_5","RC_OutTraits_6")], estimates = "alpha")
+```
+
+Both the ingroup and outgroup evaluative trait measure have excellent internal consistency.
+
+```{r}
+# Mean intergroup bias
+strel(nhb2[, c("z_total_ingroup_minus_outgroup_points", "z_ingroup_minus_outgroup_traits_positive", "z_ingroup_minus_outgroup_identify")], estimates = "alpha")
+```
+
+Same as in Study 1, the mean intergroup bias measure has inadequate internal consistency ($\alpha$ << .70). We will therefore compute all analyses with the three variables separately as exploratory analyses. Below is a correlation plot showing that a lack of variance in the variables is not the reason for the low correlations
+
+```{r}
+plot(nhb2[, c("z_total_ingroup_minus_outgroup_points", "z_ingroup_minus_outgroup_traits_positive", "z_ingroup_minus_outgroup_identify")], pch=16)
+```
+
+
+### Ingroup norms
+
+The perceived norms scale consists of four items.
+
+```{r}
+strel(nhb2[, c("norms_admire_accept", "norms_admire_express", "norms_amer_accept", "norms_amer_express")], estimates = "alpha")
+```
+The perceived norms scale has acceptable internal consistency ($\alpha$ > .70).
+
+### Moral foundations
+
+We used three subscales from the Moral Foundations questionnaire: Loyalty, Respect for Authority, Purity. We compute the internal consistency of all three subscales as well as of the overall scale.
+
+```{r}
+# Loyalty subscale
+strel(nhb2[, c("mf_pt1_1", "mf_pt1_4", "mf_pt1_7", "mf_pt2_1", "mf_pt2_4", "mf_pt2_7")], estimates = "alpha")
+
+# Authority subscale
+strel(nhb2[, c("mf_pt1_2", "mf_pt1_5", "mf_pt1_8", "mf_pt2_2", "mf_pt2_5", "mf_pt2_8")], estimates = "alpha")
+
+# Purity subscale
+strel(nhb2[, c("mf_pt1_3", "mf_pt1_6", "mf_pt1_9", "mf_pt2_3", "mf_pt2_6", "mf_pt2_9")], estimates = "alpha")
+
+# Full scale
+strel(nhb2[, c("mf_pt1_1", "mf_pt1_4", "mf_pt1_7", "mf_pt2_1", "mf_pt2_4", "mf_pt2_7",
+               "mf_pt1_2", "mf_pt1_5", "mf_pt1_8", "mf_pt2_2", "mf_pt2_5", "mf_pt2_8",
+               "mf_pt1_3", "mf_pt1_6", "mf_pt1_9", "mf_pt2_3", "mf_pt2_6", "mf_pt2_9")], estimates = "alpha")
+```
+
+All subscales and the full scale have excellent internal consistency.
+
+### Need for cognitive control
+
+The Need for Cognitive Control scale consists of 15 items.
+
+```{r}
+strel(nhb2[, grepl("NFCC_", colnames(nhb2))], estimates = "alpha")
+```
+
+The scale has excellent internal consistency.
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```

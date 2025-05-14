@@ -1,0 +1,94 @@
+---
+title: "nhb1_reliability"
+author: "Youssef Amin"
+date: "2024-06-11"
+output: html_document
+---
+
+```{r setup, message = FALSE, warning = FALSE, error = FALSE, echo = FALSE}
+library(ggplot2)
+library(car)
+library(dplyr)
+library(sjPlot)
+library(haven)
+library(tidyverse)
+library(psych)
+library(lme4)
+library(magrittr)
+library(BayesFactor)
+library(bayestestR)
+data<-read.csv('/Users/youssefamin/Dropbox/MinimalGroup_NHB_Master/MinimalGroup_NHB1/data/nhb1_bothsamples_processed.csv')
+
+```
+
+### Independent Variables
+
+#### Social and Economic Conservatism Scale
+```{r, warning = FALSE}
+alpha(data.frame(as.numeric(data$SECS_1),as.numeric(data$SECS_2),as.numeric(data$SECS_3),
+                 as.numeric(data$SECS_4),as.numeric(data$SECS_5),as.numeric(data$SECS_6),
+                 as.numeric(data$SECS_7),as.numeric(data$SECS_8),as.numeric(data$SECS_9),
+                 as.numeric(data$SECS_10),as.numeric(data$SECS_11),as.numeric(data$SECS_12)), check.keys=TRUE)
+```
+
+#### Composite Political Scale
+```{r, warning = FALSE}
+alpha(data.frame(data$z_mean_SECS, data$z_PolOrient, data$z_SocOrient, data$z_EconOrient)) 
+```
+
+#### Composite Political Extremity
+```{r, warning = FALSE}
+alpha(data.frame(data$z_PolOrientExtremity, data$z_SECSExtremity, data$z_SocOrientExtremity, data$z_EconOrientExtremity)) 
+```
+
+### Dependent Variables
+
+<br>
+
+#### Compositive Bias Score
+```{r, warning = FALSE}
+#Intergroup Bias
+alpha(data.frame(data$z_ingroup_minus_outgroup_identify, 
+                 data$z_ingroup_minus_outgroup_traits_positive, 
+                 data$z_total_ingroup_minus_outgroup_points),) #.49, below threshold
+
+#Intergroup Bias Separated Out
+alpha(data.frame(data$IngroupIdentify, data$OutgroupIdentify,
+               data$mean_ingroup_traits_positive, data$mean_outgroup_traits_positive,
+             data$total_ingroup_points,data$total_outgroup_points), keys = c("OutgroupIdentify", "mean_outgroup_traits_positive", "total_outgroup_points"))
+
+fa.parallel(data.frame(data$z_ingroup_minus_outgroup_identify, 
+                       data$z_ingroup_minus_outgroup_traits_positive, 
+                       data$z_total_ingroup_minus_outgroup_points)) #0 factors
+
+
+fa.parallel(data.frame(data$IngroupIdentify, data$OutgroupIdentify,
+                       data$mean_ingroup_traits_positive, data$mean_outgroup_traits_positive,
+                       data$total_ingroup_points,data$total_outgroup_points)) #2 factors
+
+fa(data.frame(data$IngroupIdentify, data$OutgroupIdentify,
+              data$mean_ingroup_traits_positive, data$mean_outgroup_traits_positive,
+              data$total_ingroup_points,data$total_outgroup_points),2) #One for trait evaluation, another for outgroup congeniality
+
+#Trait Evaluation
+alpha(data.frame(data$RC_InTraits_1,data$InTraits_2,data$InTraits_3,
+                 data$RC_InTraits_4,data$InTraits_5,data$RC_InTraits_6, 
+                 data$RC_OutTraits_1,data$OutTraits_2,data$OutTraits_3,
+                 data$RC_OutTraits_4,data$OutTraits_5,data$RC_OutTraits_6))
+
+#Trait Evaluation-Ingroup
+alpha(data.frame(data$RC_InTraits_1,data$InTraits_2,data$InTraits_3,
+                 data$RC_InTraits_4,data$InTraits_5,data$RC_InTraits_6))
+
+#Trait Evaluation-Outgroup
+alpha(data.frame(data$RC_OutTraits_1,data$OutTraits_2,data$OutTraits_3,
+                 data$RC_OutTraits_4,data$OutTraits_5,data$RC_OutTraits_6))
+
+#Point Distribution
+alpha(data.frame(data$MatrixA_O_ingroup_points,data$MatrixA_T_ingroup_points,
+                 data$MatrixB_O_ingroup_points,data$MatrixB_T_ingroup_points,
+                 data$MatrixC_O_ingroup_points,data$MatrixC_T_ingroup_points,
+                 data$MatrixA_O_outgroup_points,data$MatrixA_T_outgroup_points,
+                 data$MatrixB_O_outgroup_points,data$MatrixB_T_outgroup_points,
+                 data$MatrixC_O_outgroup_points,data$MatrixC_T_outgroup_points), check.keys=TRUE)
+```

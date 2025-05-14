@@ -1,0 +1,88 @@
+---
+title: "Multi-Meta-Analysis Plot"
+author: "Angelika Stefan"
+date: "2025-05-14"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(ggplot2)
+library(brms)
+library(ggdist)
+library(tidybayes)
+library(dplyr)
+library(stringr)
+```
+
+## Read in model files
+
+```{r}
+model_files <- lapply(paste0("./model-fits/Meta/", 
+                             grep("bayesMeta_", list.files("./model-fits/Meta"), 
+                                  value=TRUE)), 
+                      readRDS)
+```
+
+## Prepare data for plot
+
+```{r}
+ideologyMeasure <- rep(c("issueBased", "selfReported"), 4)
+biasMeasure <- rep(c("combined", "identification", "points", "traits"), each=2)
+plotdata <- cbind(spread_draws(model_files[[1]], b_Intercept), ideologyMeasure = ideologyMeasure[1], biasMeasure = biasMeasure[1])
+summaryData <- hypothesis(model_files[[1]], "Intercept = 0")$hypothesis[, c(2, 4:5)]
+for(i in 2:8){
+  plotdata <- rbind(plotdata, cbind(spread_draws(model_files[[i]], b_Intercept), 
+                                    ideologyMeasure = ideologyMeasure[i], 
+                                    biasMeasure = biasMeasure[i]))
+}
+for(i in 2:8){
+    summaryData <- rbind(summaryData, hypothesis(model_files[[i]], "Intercept = 0")$hypothesis[, c(2, 4:5)])
+}
+summaryData$ideologyMeasure <- ideologyMeasure
+summaryData$biasMeasure <- biasMeasure
+summaryData <- mutate_if(summaryData, is.numeric, round, 2)
+```
+
+## Plot
+
+```{r}
+p <- ggplot(plotdata, aes(x = b_Intercept, y = biasMeasure, fill = ideologyMeasure, color = ideologyMeasure)) +
+  geom_vline(xintercept = 0, linewidth = 0.25, lty = 2) +
+  stat_halfeye(.width = c(.9, .95), slab_alpha=0.4) +
+  scale_fill_manual(values = alpha(c("#56B4E9", "#D55E00")), labels = c("Issue-based", "Self-reported")) +
+  scale_color_manual(values = alpha(c("#56B4E9", "#D55E00")), labels = c("Issue-based", "Self-reported")) +
+  theme_minimal() +
+  labs(
+    x = "\nIdeological Asymmetry Effect (Fisher's z)",
+    y = "Bias Measure\n",
+    fill = "",
+    color = ""
+  ) +
+  theme(text=element_text(size=20),
+        legend.title = element_text(size=16),
+        legend.text = element_text(size=16),
+        legend.position = "inside",
+        legend.position.inside = c(0.85, 1)) +
+  xlim(-0.3, 0.75) +
+  scale_y_discrete(labels=rev(c("Trait \n evaluation", "Tajfel points", "Ingroup/Outgroup \n identification", "Combined")))
+
+p +
+  geom_text(
+    data = summaryData[summaryData$ideologyMeasure == "issueBased",],
+    aes(label = str_glue("{Estimate} [{CI.Lower}, {CI.Upper}]"), x = 0.75, y=biasMeasure),
+    hjust = "inward", inherit.aes = FALSE, vjust=-1, color = "#56B4E9", nudge_y = 0.15, fontface = "bold"
+  ) + 
+  geom_text(
+    data = summaryData[summaryData$ideologyMeasure == "selfReported",],
+    aes(label = str_glue("{Estimate} [{CI.Lower}, {CI.Upper}]"), x = 0.75, y=biasMeasure),
+    hjust = "inward", inherit.aes = FALSE, vjust=0.5, color = "#D55E00", nudge_y = 0.15, fontface = "bold"
+  ) 
+  
+ggsave("./model-fits/nhbMeta_multimeta-forest.pdf", device = "pdf", width=10.250000, height=6.666667)
+ggsave("./model-fits/nhbMeta_multimeta-forest.jpg", device = "jpeg", width=10.250000, height=6.666667)
+
+```
+
+

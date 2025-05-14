@@ -1,0 +1,407 @@
+---
+title: 'Exploratory Analyses NHB1: Tajfel Points as DV'
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(brms)
+library(bayestestR)
+```
+
+## Read in and combine data from Prolific and MTurk
+
+```{r}
+
+# Read in data from both studies
+nhb1a <- read.csv('../../data/nhb1a_processed.csv')
+nhb1b <- read.csv('../../data/nhb1b_processed.csv')
+
+nhb1a$platform <- "Prolific"
+nhb1b$platform <- "MTurk"
+
+# Combine data
+nhb1 <- rbind(nhb1a, nhb1b)
+
+# Compute standardized scores for composite political orientation in the combined dataset
+nhb1$z_mean_SECS <- scale(nhb1$mean_SECS)
+nhb1$z_EconOrient <- scale(nhb1$EconOrient)
+nhb1$z_SocOrient <- scale(nhb1$SocOrient)
+nhb1$z_PolOrient <- scale(nhb1$PolOrient)
+nhb1$composite_political_orientation <- rowMeans(nhb1[, c("z_mean_SECS", "z_EconOrient", "z_SocOrient", "z_PolOrient")], na.rm = TRUE)
+nhb1$composite_political_orientation_z <- scale(nhb1$composite_political_orientation)
+
+# Compute standardized scores for mean intergroup bias in the combined dataset
+nhb1$z_total_ingroup_minus_outgroup_points <- scale(nhb1$total_ingroup_minus_outgroup_points)
+```
+
+## Why this exploratory analysis?
+
+our reliability analyses revealed that our combined measure for intergroup bias has an inadequate internal consistency in all three samples (Prolific, MTurk, Combined). As preregistered, we therefore compute our main hypothesis tests with each of the scales separately. Here, we compute the confirmatory hypothesis tests with the __difference of points assigned to ingroup and outgroup in the Tajfel matrices__ as a dependent variable. We briefly comment on if and how results differ from the preregistered analyses.
+
+## Testing ideological asymmetry in intergroup bias
+
+### Combined sample
+
+#### Model fitting
+
+```{r}
+# Define model equation
+confirmatory1_formula <- z_total_ingroup_minus_outgroup_points ~ composite_political_orientation_z
+
+# Fit frequentist model
+confirmatory1_freqmodel <- lm(confirmatory1_formula, nhb1)
+
+# Fit Bayesian model
+confirmatory1_priors <- c(set_prior("normal(0, 0.5)", class = "b"))
+
+confirmatory1_bayesmodel <- brm(
+  formula = confirmatory1_formula, 
+  data = nhb1, 
+  family = gaussian(),
+  prior = confirmatory1_priors,
+  sample_prior = "no",
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory1_bayesmodel_points-as-DV"
+)
+
+confirmatory1_priordraws<- brms::brm(confirmatory1_formula, 
+                            data = nhb1, 
+                            family = "gaussian",
+                            prior = confirmatory1_priors,
+                            sample_prior = "only",
+                            seed = 987654,
+                            silent = TRUE,
+                            refresh = 0,
+                            iter = 100000,
+                            file = "./model-fits/nhb1/exploratory1_bayesmodel_priordraws_points-as-DV")
+```
+
+#### Model summaries
+
+```{r}
+summary(confirmatory1_freqmodel)
+summary(confirmatory1_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_freq <- confirmatory1_freqmodel$coefficients["composite_political_orientation_z"]
+
+# Confidence interval
+confint1_freq <- confint(confirmatory1_freqmodel, "composite_political_orientation_z")
+
+# p-Value (computed manually as one-sided p-value)
+df_confirm1 <- confirmatory1_freqmodel$df.residual
+t_confirm1 <- confirmatory1_freqmodel$coefficients[["composite_political_orientation_z"]]/summary(confirmatory1_freqmodel)$coefficients["composite_political_orientation_z","Std. Error"]
+p_confirm1 <- 1-pt(t_confirm1, df_confirm1)
+
+data.frame("beta_z" = round(coef1_freq, 2),
+           "CI_lower" = round(confint1_freq[1], 2),
+           "CI_upper" = round(confint1_freq[2], 2),
+           "p value" = round(p_confirm1, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes <- fixef(confirmatory1_bayesmodel)["composite_political_orientation_z", "Estimate"]
+
+# Credible interval
+cred1_bayes <- fixef(confirmatory1_bayesmodel)["composite_political_orientation_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+confirmatory1_bf <- bayesfactor_parameters(confirmatory1_bayesmodel,
+                       prior=confirmatory1_priordraws, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z")
+
+data.frame("beta_z" = round(coef1_bayes, 2),
+           "CI_lower" = round(cred1_bayes[1], 2),
+           "CI_upper" = round(cred1_bayes[2], 2),
+           "BFplus0" = round(exp(confirmatory1_bf$log_BF), 2))
+```
+
+### Prolific sample
+
+#### Model fitting
+
+```{r}
+# Fit frequentist model
+confirmatory1a_freqmodel <- lm(confirmatory1_formula, nhb1a)
+
+# Fit Bayesian model
+confirmatory1a_bayesmodel <- brm(
+  formula = confirmatory1_formula, 
+  data = nhb1a, 
+  family = gaussian(),
+  prior = confirmatory1_priors,
+  sample_prior = "no",
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory1a_bayesmodel_points-as-DV"
+)
+
+confirmatory1a_priordraws<- brms::brm(confirmatory1_formula, 
+                            data = nhb1a, 
+                            family = "gaussian",
+                            prior = confirmatory1_priors,
+                            sample_prior = "only",
+                            seed = 987654,
+                            silent = TRUE,
+                            refresh = 0,
+                            iter = 100000,
+                            file = "./model-fits/nhb1/exploratory1a_bayesmodel_priordraws_points-as-DV")
+```
+
+#### Model summaries
+
+```{r}
+summary(confirmatory1a_freqmodel)
+summary(confirmatory1a_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef1a_freq <- confirmatory1a_freqmodel$coefficients["composite_political_orientation_z"]
+
+# Confidence interval
+confint1a_freq <- confint(confirmatory1a_freqmodel, "composite_political_orientation_z")
+
+# p-Value (computed manually as one-sided p-value)
+df_confirm1a <- confirmatory1a_freqmodel$df.residual
+t_confirm1a <- confirmatory1a_freqmodel$coefficients[["composite_political_orientation_z"]]/summary(confirmatory1a_freqmodel)$coefficients["composite_political_orientation_z","Std. Error"]
+p_confirm1a <- 1-pt(t_confirm1a, df_confirm1a)
+
+data.frame("beta_z" = round(coef1a_freq, 2),
+           "CI_lower" = round(confint1a_freq[1], 2),
+           "CI_upper" = round(confint1a_freq[2], 2),
+           "p value" = round(p_confirm1a, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1a_bayes <- fixef(confirmatory1a_bayesmodel)["composite_political_orientation_z", "Estimate"]
+
+# Credible interval
+cred1a_bayes <- fixef(confirmatory1a_bayesmodel)["composite_political_orientation_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+confirmatory1a_bf <- bayesfactor_parameters(confirmatory1a_bayesmodel,
+                       prior=confirmatory1a_priordraws, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z")
+
+data.frame("beta_z" = round(coef1a_bayes, 2),
+           "CI_lower" = round(cred1a_bayes[1], 2),
+           "CI_upper" = round(cred1a_bayes[2], 2),
+           "BFplus0" = round(exp(confirmatory1a_bf$log_BF), 2))
+```
+
+### MTurk sample
+
+#### Model fitting
+
+```{r}
+# Fit frequentist model
+confirmatory1b_freqmodel <- lm(confirmatory1_formula, nhb1b)
+
+# Fit Bayesian model
+confirmatory1b_bayesmodel <- brm(
+  formula = confirmatory1_formula, 
+  data = nhb1b, 
+  family = gaussian(),
+  prior = confirmatory1_priors,
+  sample_prior = "no",
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory1b_bayesmodel_points-as-DV"
+)
+
+confirmatory1b_priordraws<- brms::brm(confirmatory1_formula, 
+                            data = nhb1b, 
+                            family = "gaussian",
+                            prior = confirmatory1_priors,
+                            sample_prior = "only",
+                            seed = 987654,
+                            silent = TRUE,
+                            refresh = 0,
+                            iter = 100000,
+                            file = "./model-fits/nhb1/exploratory1b_bayesmodel_priordraws_points-as-DV")
+```
+
+#### Model summaries
+
+```{r}
+summary(confirmatory1b_freqmodel)
+summary(confirmatory1b_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef1b_freq <- confirmatory1b_freqmodel$coefficients["composite_political_orientation_z"]
+
+# Confidence interval
+confint1b_freq <- confint(confirmatory1b_freqmodel, "composite_political_orientation_z")
+
+# p-Value (computed manually as one-sided p-value)
+df_confirm1b <- confirmatory1b_freqmodel$df.residual
+t_confirm1b <- confirmatory1b_freqmodel$coefficients[["composite_political_orientation_z"]]/summary(confirmatory1b_freqmodel)$coefficients["composite_political_orientation_z","Std. Error"]
+p_confirm1b <- 1-pt(t_confirm1b, df_confirm1b)
+
+data.frame("beta_z" = round(coef1b_freq, 2),
+           "CI_lower" = round(confint1b_freq[1], 2),
+           "CI_upper" = round(confint1b_freq[2], 2),
+           "p value" = round(p_confirm1b, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef1b_bayes <- fixef(confirmatory1b_bayesmodel)["composite_political_orientation_z", "Estimate"]
+
+# Credible interval
+cred1b_bayes <- fixef(confirmatory1b_bayesmodel)["composite_political_orientation_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+confirmatory1b_bf <- bayesfactor_parameters(confirmatory1b_bayesmodel,
+                       prior=confirmatory1b_priordraws, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z")
+
+data.frame("beta_z" = round(coef1b_bayes, 2),
+           "CI_lower" = round(cred1b_bayes[1], 2),
+           "CI_upper" = round(cred1b_bayes[2], 2),
+           "BFplus0" = round(exp(confirmatory1b_bf$log_BF), 2))
+```
+
+## Testing moderating effect of platform on ideological asymmetry in intergroup bias
+
+### Model fitting
+
+```{r}
+# Define model equation
+confirmatory2_formula <- z_total_ingroup_minus_outgroup_points ~ composite_political_orientation_z + platform + composite_political_orientation_z:platform
+
+# Fit frequentist model
+confirmatory2_freqmodel <- lm(confirmatory2_formula, data = nhb1)
+
+# Fit Bayesian model
+confirmatory2_priors <- c(
+  set_prior("normal(0, 0.5)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0, 0.5)", class = "b", coef="platformProlific"),
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:platformProlific")
+  )
+
+confirmatory2_bayesmodel <- brms::brm(
+  formula = confirmatory2_formula,
+  data = nhb1,
+  family = "gaussian",
+  prior = confirmatory2_priors,
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb1/exploratory2_bayesmodel_points-as-DV"
+)
+
+confirmatory2_priordraws <- brms::brm(
+  confirmatory2_formula,
+  data = nhb1, 
+  family = "gaussian",
+  prior = confirmatory2_priors,
+  sample_prior = "only",
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  iter = 100000,
+  file = "./model-fits/nhb1/exploratory2_bayesmodel_priordraws_points-as-DV")
+```
+
+### Model summaries
+
+```{r}
+summary(confirmatory2_freqmodel)
+summary(confirmatory2_bayesmodel)
+```
+
+### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_freq <- confirmatory2_freqmodel$coefficients["composite_political_orientation_z:platformProlific"]
+
+# Confidence interval
+confint2_freq <- confint(confirmatory2_freqmodel, "composite_political_orientation_z:platformProlific")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm2 <- summary(confirmatory2_freqmodel)$coefficients["composite_political_orientation_z:platformProlific","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef2_freq, 2),
+           "CI_lower" = round(confint2_freq[1], 2),
+           "CI_upper" = round(confint2_freq[2], 2),
+           "p value" = round(p_confirm2, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef2_bayes <- fixef(confirmatory2_bayesmodel)["composite_political_orientation_z:platformProlific", "Estimate"]
+
+# Credible interval
+cred2_bayes <- fixef(confirmatory2_bayesmodel)["composite_political_orientation_z:platformProlific", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+confirmatory2_bf <- bayesfactor_parameters(confirmatory2_bayesmodel,
+                       prior=confirmatory2_priordraws, 
+                       direction = "two-sided", 
+                       parameters = "composite_political_orientation_z:platformProlific")
+
+data.frame("beta_z" = round(coef2_bayes, 2),
+           "CI_lower" = round(cred2_bayes[1], 2),
+           "CI_upper" = round(cred2_bayes[2], 2),
+           "BF10" = round(exp(confirmatory2_bf$log_BF), 2))
+```
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```

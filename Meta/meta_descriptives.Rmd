@@ -1,0 +1,264 @@
+---
+title: "Descriptive Statistics across Studies"
+author: "Youssef Amin and Angelika Stefan"
+date: "2025-04-29"
+output: html_document
+---
+
+Here, we present descriptive statistics of demographic variables and core predictor and outcome variables in the preregistered hypothesis tests.
+
+## Load packages
+
+```{r}
+library(knitr)
+```
+
+## Read in data
+
+```{r}
+nhb1a <- read.csv('../../data/nhb1a_processed.csv')
+nhb1b <- read.csv('../../data/nhb1b_processed.csv')
+nhb2 <- read.csv('../../data/nhb2_processed.csv')
+nhb3 <- read.csv('../../data/nhb3_processed.csv')
+```
+
+## Data wrangling
+
+Add study (and condition) identifier
+
+```{r}
+nhb1a$study <- "Study 1a"
+nhb1a$condition <- "Prolific"
+nhb1b$study <- "Study 1b"
+nhb1b$condition <- "MTurk"
+nhb2$study <- "Study 2"
+nhb3$study <- "Study 3"
+```
+
+Combine demographics in one dataset
+
+```{r}
+nhbDemoColumns <- c("X",
+                    "study",
+                    "condition",
+                    "dem_Age",
+                    "dem_Sex",
+                    "dem_Occ",
+                    "dem_Race_recoded",
+                    "dem_Education",
+                    "dem_Income")
+
+nhbDemo <- rbind(nhb1a[, nhbDemoColumns],
+                 nhb1b[, nhbDemoColumns],
+                 nhb2[, nhbDemoColumns],
+                 nhb3[, nhbDemoColumns])
+```
+
+Combine core inferential variables in one dataset
+
+```{r}
+nhXYColumns <- c("X",
+                "study",
+                "condition",
+                "composite_political_orientation",
+                "mean_intergroup_bias",
+                "total_ingroup_minus_outgroup_points",
+                "ingroup_minus_outgroup_traits_positive",
+                "ingroup_minus_outgroup_identify")
+
+nhbXY <- rbind(nhb1a[, nhXYColumns],
+                 nhb1b[, nhXYColumns],
+                 nhb2[, nhXYColumns],
+                 nhb3[, nhXYColumns])
+```
+
+
+## Number of Participants per Study
+
+```{r}
+sstable <- t(as.matrix(table(nhbDemo$study)))
+sstable <- cbind(sstable, "total" = nrow(nhbDemo))
+
+nhb2sstable <- t(as.matrix(table(nhb2$condition)))
+nhb3sstable <- t(as.matrix(table(nhb3$condition)))
+
+kable(sstable, caption = "Total Sample Size per Study")
+kable(nhb2sstable, caption = "Sample Size per Condition in Study 2")
+kable(nhb3sstable, caption = "Sample Size per Condition in Study 3")
+```
+
+## Demographic Variables
+
+### Age
+
+```{r}
+ageMeans <- c(tapply(nhbDemo$dem_Age, nhbDemo$study, function(x) mean(x, na.rm = TRUE)), 
+              "total" = mean(nhbDemo$dem_Age, na.rm = TRUE))
+ageSD <- c(tapply(nhbDemo$dem_Age, nhbDemo$study, function(x) sd(x, na.rm = TRUE)), 
+              "total" = sd(nhbDemo$dem_Age, na.rm = TRUE))
+
+ageDemo <- round(rbind(ageMeans, ageSD), 2)
+rownames(ageDemo) <- c("Mean", "SD")
+
+kable(ageDemo, caption = "Descriptive Statistics of Age")
+
+```
+
+### Gender
+
+```{r}
+# Count "prefer not to say" as missing 
+nhbDemo$dem_Sex <- ifelse(nhbDemo$dem_Sex == "Prefer not to say", "missing", nhbDemo$dem_Sex)
+
+# Frequency table
+genderDemo <- as.matrix(table(nhbDemo$study, nhbDemo$dem_Sex))
+genderDemo <- rbind(genderDemo, "total" = colSums(genderDemo))
+genderDemo <- genderDemo[, c(1,2,4,5,6,3)]
+
+kable(t(genderDemo), caption = "Frequency Table of Gender")
+
+# Relative frequencies
+genderDemo2 <- apply(genderDemo, 1, function(x) round(x/sum(x)*100, 2))
+kable(genderDemo2, caption = "Relative Frequency Table of Gender")
+```
+
+### Income
+
+```{r}
+# Code "" as missing
+nhbDemo$dem_Income <- ifelse(nhbDemo$dem_Income == "", "missing", nhbDemo$dem_Income)
+
+# Order income levels
+nhbDemo$dem_Income <- gsub("\\$", "", nhbDemo$dem_Income)
+nhbDemo$dem_Income <- factor(nhbDemo$dem_Income,
+                             levels = unique(nhbDemo$dem_Income)[c(4,8,7,6,5,3,2,9,1,10)])
+# Frequency table
+incomeDemo <- as.matrix(table(nhbDemo$study, nhbDemo$dem_Income))
+incomeDemo <- rbind(incomeDemo, "total" = colSums(incomeDemo))
+
+# Total %
+incomeDemo <- rbind(incomeDemo, "total Percent" = incomeDemo["total",]/sum(incomeDemo["total",]))
+incomeDemo <- rbind(incomeDemo, "Cumulative Percent" = cumsum(incomeDemo["total Percent",]))
+
+
+# Print
+kable(incomeDemo, caption = "Frequency Table of Income in USD")
+```
+
+### Race
+
+```{r}
+# Merge hispanic categories
+nhbDemo$dem_Race_recoded <- ifelse(nhbDemo$dem_Race_recoded == "Non-White Hispanic", "Hispanic", nhbDemo$dem_Race_recoded)
+
+# Frequency table
+raceDemo <- as.matrix(table(nhbDemo$study, nhbDemo$dem_Race_recoded))
+raceDemo <- rbind(raceDemo, "total" = colSums(raceDemo))
+raceDemo <- raceDemo[, c(9,1,2,4,6,8,7,8,5,3)]
+
+# Frequency table
+kable(t(raceDemo), caption = "Frequency Table of Race")
+
+# Relative frequencies
+raceDemo2 <- apply(raceDemo, 1, function(x) round(x/sum(x)*100, 2))
+kable(raceDemo2, caption = "Relative Frequency Table of Race (in %)")
+```
+
+### Education
+
+```{r}
+nhbDemo$dem_Education <- ifelse(is.na(nhbDemo$dem_Education), "missing", nhbDemo$dem_Education)
+nhbDemo$dem_Education <- factor(nhbDemo$dem_Education,
+                                   levels = unique(nhbDemo$dem_Education)[c(6,1,2,4,3,5,7,8)])
+eduDemo <- as.matrix(table(nhbDemo$study, nhbDemo$dem_Education))
+eduDemo <- rbind(eduDemo, "total" = colSums(eduDemo))
+
+# Frequancy table
+kable(t(eduDemo), caption = "Frequency Table of Education")
+
+# Relative frequencies
+eduDemo2 <- apply(eduDemo, 1, function(x) round(x/sum(x)*100, 2))
+kable(eduDemo2, caption = "Relative Frequency Table of Education (in %)")
+```
+
+## Confirmatory Hypothesis Testing Variables
+
+### Composite Political Orientation
+
+```{r}
+IdeologyMeans <- c(tapply(nhbXY$composite_political_orientation, nhbXY$study, function(x) mean(x, na.rm = TRUE)), 
+              "total" = mean(nhbXY$composite_political_orientation, na.rm = TRUE))
+IdeologySD <- c(tapply(nhbXY$composite_political_orientation, nhbXY$study, function(x) sd(x, na.rm = TRUE)), 
+              "total" = sd(nhbXY$composite_political_orientation, na.rm = TRUE))
+
+IdeologyDemo <- rbind(IdeologyMeans, IdeologySD)
+rownames(IdeologyDemo) <- c("Mean", "SD")
+
+kable(IdeologyDemo, caption = "Descriptive Statistics of Ideology (Composite Political Orientation Score)")
+```
+
+### Mean Intergroup Bias
+
+```{r}
+BiasMeans <- c(tapply(nhbXY$mean_intergroup_bias, nhbXY$study, function(x) mean(x, na.rm = TRUE)), 
+                   "total" = mean(nhbXY$mean_intergroup_bias, na.rm = TRUE))
+BiasSD <- c(tapply(nhbXY$mean_intergroup_bias, nhbXY$study, function(x) sd(x, na.rm = TRUE)), 
+                "total" = sd(nhbXY$mean_intergroup_bias, na.rm = TRUE))
+
+BiasDemo <- rbind(BiasMeans, BiasSD)
+rownames(BiasDemo) <- c("Mean", "SD")
+
+kable(BiasDemo, caption = "Descriptive Statistics of Bias")
+```
+
+### Difference in Tajfel Points
+
+```{r}
+PointsMeans <- c(tapply(nhbXY$total_ingroup_minus_outgroup_points, nhbXY$study, function(x) mean(x, na.rm = TRUE)), 
+                   "total" = mean(nhbXY$total_ingroup_minus_outgroup_points, na.rm = TRUE))
+PointsSD <- c(tapply(nhbXY$total_ingroup_minus_outgroup_points, nhbXY$study, function(x) sd(x, na.rm = TRUE)), 
+                "total" = sd(nhbXY$total_ingroup_minus_outgroup_points, na.rm = TRUE))
+
+PointsDemo <- rbind(PointsMeans, PointsSD)
+rownames(PointsDemo) <- c("Mean", "SD")
+
+kable(PointsDemo, caption = "Descriptive Statistics of Difference in Tajfel Points")
+
+```
+
+### Difference in Evaluative Traits
+
+```{r}
+TraitsMeans <- c(tapply(nhbXY$ingroup_minus_outgroup_traits_positive, nhbXY$study, function(x) mean(x, na.rm = TRUE)), 
+                 "total" = mean(nhbXY$ingroup_minus_outgroup_traits_positive, na.rm = TRUE))
+TraitsSD <- c(tapply(nhbXY$ingroup_minus_outgroup_traits_positive, nhbXY$study, function(x) sd(x, na.rm = TRUE)), 
+              "total" = sd(nhbXY$ingroup_minus_outgroup_traits_positive, na.rm = TRUE))
+
+TraitsDemo <- rbind(TraitsMeans, TraitsSD)
+rownames(TraitsDemo) <- c("Mean", "SD")
+
+kable(TraitsDemo, caption = "Descriptive Statistics of Difference in Evaluative Traits")
+
+```
+
+### Difference in Ingroup-Outgroup Identification
+
+```{r}
+IdentMeans <- c(tapply(nhbXY$ingroup_minus_outgroup_identify, nhbXY$study, function(x) mean(x, na.rm = TRUE)), 
+                 "total" = mean(nhbXY$ingroup_minus_outgroup_identify, na.rm = TRUE))
+IdentSD <- c(tapply(nhbXY$ingroup_minus_outgroup_identify, nhbXY$study, function(x) sd(x, na.rm = TRUE)), 
+              "total" = sd(nhbXY$ingroup_minus_outgroup_identify, na.rm = TRUE))
+
+IdentDemo <- rbind(IdentMeans, IdentSD)
+rownames(IdentDemo) <- c("Mean", "SD")
+
+kable(IdentDemo, caption = "Descriptive Statistics of Difference in Ingroup-Outgroup Identification")
+```
+
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```

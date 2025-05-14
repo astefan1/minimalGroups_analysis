@@ -1,0 +1,571 @@
+---
+title: 'Exploratory Analyses NHB2: Evaluative Traits as DV'
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Why this exploratory analysis?
+
+Our reliability analyses revealed that our combined measure for intergroup bias has an inadequate internal consistency. As preregistered, we therefore compute our main hypothesis tests with each of the scales separately. Here, we compute the confirmatory hypothesis tests with the __difference in trait evaluations__ as a dependent variable. 
+
+## Load packages
+
+```{r setup}
+library(brms)
+library(bayestestR)
+library(emmeans)
+library(lavaan)
+library(logspline)
+source("helper_bayes_mediation.R") # Function to report Bayesian mediation results
+```
+
+## Read in data
+
+```{r}
+nhb2 <- read.csv('../../data/nhb2_processed.csv')
+```
+
+## Testing ideological asymmetry in intergroup bias
+
+### Model fitting
+
+```{r}
+# Define model equation
+exploratory1_formula <- z_ingroup_minus_outgroup_traits_positive ~ composite_political_orientation_z
+
+# Fit frequentist model
+exploratory1_freqmodel <- lm(exploratory1_formula, nhb2)
+
+# Fit Bayesian models
+exploratory1_default_priors <- c(set_prior("normal(0, 0.5)", class = "b"))
+exploratory1_informed_priors <- c(set_prior("normal(0.15, 0.05)", class = "b"))
+
+exploratory1_bayesmodel_default <- brm(
+  formula = exploratory1_formula, 
+  data = nhb2, 
+  family = gaussian(),
+  prior = exploratory1_default_priors,
+  sample_prior = "no",
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  # silent = TRUE,
+  # refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb2/exploratory1_bayesmodel_default_traits-as-DV"
+  )
+
+exploratory1_priordraws_default<- brm(
+  exploratory1_formula,
+  data = nhb2,
+  family = "gaussian",
+  prior = exploratory1_default_priors,
+  sample_prior = "only",
+  seed = 987654,
+  # silent = TRUE,
+  # refresh = 0,
+  iter = 100000,
+  file = "./model-fits/nhb2/exploratory1_bayesmodel_priordraws_default_traits-as-DV"
+  )
+                            
+exploratory1_bayesmodel_informed <- brm(
+  formula = exploratory1_formula, 
+  data = nhb2, 
+  family = gaussian(),
+  prior = exploratory1_informed_priors,
+  sample_prior = "no",
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  # silent = TRUE,
+  # refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb2/exploratory1_bayesmodel_informed_traits-as-DV"
+  )
+
+exploratory1_priordraws_informed<- brm(
+  exploratory1_formula,
+  data = nhb2,
+  family = "gaussian",
+  prior = exploratory1_informed_priors,
+  sample_prior = "only",
+  seed = 987654,
+  # silent = TRUE,
+  # refresh = 0,
+  iter = 100000,
+  file = "./model-fits/nhb2/exploratory1_bayesmodel_priordraws_informed_traits-as-DV"
+  )                            
+```
+
+### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel_default)
+summary(exploratory1_bayesmodel_informed)
+```
+
+### Hypothesis test
+
+Frequentist quantities
+
+```{r}
+# Coefficient estimate
+coef1_freq <- exploratory1_freqmodel$coefficients["composite_political_orientation_z"]
+
+# Confidence interval
+confint1_freq <- confint(exploratory1_freqmodel, "composite_political_orientation_z")
+confint90_freq <- confint(exploratory1_freqmodel, "composite_political_orientation_z", level = 0.90)
+
+# p-Value (computed manually as one-sided p-value)
+df_confirm1 <- exploratory1_freqmodel$df.residual
+t_confirm1 <- exploratory1_freqmodel$coefficients[["composite_political_orientation_z"]]/summary(exploratory1_freqmodel)$coefficients["composite_political_orientation_z","Std. Error"]
+p_confirm1 <- 1-pt(t_confirm1, df_confirm1)
+
+data.frame("beta_z" = round(coef1_freq, 2),
+           "CI_lower_95" = round(confint1_freq[1], 2),
+           "CI_upper_95" = round(confint1_freq[2], 2),
+           "CI_lower_90" = round(confint90_freq[1], 2),
+           "CI_upper_90" = round(confint90_freq[2], 2),
+           "p value" = round(p_confirm1, 3))
+```
+
+Bayesian quantities
+
+```{r}
+# Coefficient estimate
+coef1_bayes_default <- fixef(exploratory1_bayesmodel_default)["composite_political_orientation_z", "Estimate"]
+coef1_bayes_informed <- fixef(exploratory1_bayesmodel_informed)["composite_political_orientation_z", "Estimate"]
+
+# Credible interval
+cred1_bayes_default <- fixef(exploratory1_bayesmodel_default)["composite_political_orientation_z", c("Q2.5", "Q97.5")]
+cred90_bayes_default <- fixef(exploratory1_bayesmodel_default, probs = c(0.05, 0.95))["composite_political_orientation_z", c("Q5", "Q95")]
+cred1_bayes_informed <- fixef(exploratory1_bayesmodel_informed)["composite_political_orientation_z", c("Q2.5", "Q97.5")]
+cred90_bayes_informed <- fixef(exploratory1_bayesmodel_informed, probs = c(0.05, 0.95))["composite_political_orientation_z", c("Q5", "Q95")]
+
+# Bayes factor
+exploratory1_bf_default <- bayesfactor_parameters(
+  exploratory1_bayesmodel_default,
+  prior=exploratory1_priordraws_default,
+  direction = "right", 
+  parameters = "composite_political_orientation_z")
+
+exploratory1_bf_informed <- bayesfactor_parameters(
+  exploratory1_bayesmodel_informed,
+  prior=exploratory1_priordraws_informed,
+  direction = "right", 
+  parameters = "composite_political_orientation_z")
+                       
+# Posterior probability > .10
+postProb_default <- hypothesis(exploratory1_bayesmodel_default, "composite_political_orientation_z > 0.10")$hypothesis$Post.Prob
+postProb_informed <- hypothesis(exploratory1_bayesmodel_informed, "composite_political_orientation_z > 0.10")$hypothesis$Post.Prob
+
+data.frame("prior" = c("default", "informed"),
+           "beta_z" = round(c(coef1_bayes_default, coef1_bayes_informed), 2),
+           "CI_lower_95" = round(c(cred1_bayes_default[1], cred1_bayes_informed[1]), 2),
+           "CI_upper_95" = round(c(cred1_bayes_default[2], cred1_bayes_informed[2]), 2),
+           "CI_lower_90" = round(c(cred90_bayes_default[1], cred90_bayes_informed[1]), 2),
+           "CI_upper_90" = round(c(cred90_bayes_default[2], cred90_bayes_informed[2]), 2),
+           "BFplus0" = round(c(exp(exploratory1_bf_default$log_BF), exp(exploratory1_bf_informed$log_BF)), 2),
+           "PostProb" = round(c(postProb_default, postProb_informed), 2))
+```
+
+
+## Testing the moderating effect of group type (random, volitional, attitude-similarity)
+
+### Model fitting
+
+```{r}
+nhb2$condition <- factor(nhb2$condition, 
+                         levels = c("random", "volitional", "attitude"),
+                         labels = c("Random", "Volitional", "Attitude"))
+
+# Define model equation
+exploratory2_formula <- z_ingroup_minus_outgroup_traits_positive ~ composite_political_orientation_z * condition
+
+# Fit frequentist model
+exploratory2_freqmodel <- lm(exploratory2_formula, data = nhb2)
+
+# Fit Bayesian models
+
+exploratory2_default_priors <- c(
+  set_prior("normal(0, 0.5)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0, 0.5)", class = "b", coef="conditionVolitional"),
+  set_prior("normal(0, 0.5)", class = "b", coef="conditionAttitude"),
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:conditionVolitional"),
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:conditionAttitude")
+  )
+
+exploratory2_informed_priors <- c(
+  set_prior("normal(0.15, 0.05)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0.1, 0.05)", class = "b", coef="conditionVolitional"),
+  set_prior("normal(0.1, 0.05)", class = "b", coef="conditionAttitude"),
+  set_prior("normal(0.1, 0.05)", class = "b", coef="composite_political_orientation_z:conditionVolitional"),
+  set_prior("normal(0.1, 0.05)", class = "b", coef="composite_political_orientation_z:conditionAttitude")
+  )
+
+exploratory2_bayesmodel_default <- brms::brm(
+  formula = exploratory2_formula,
+  data = nhb2,
+  family = "gaussian",
+  prior = exploratory2_default_priors,
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb2/exploratory2_bayesmodel_default_traits-as-DV"
+)
+
+exploratory2_priordraws_default <- brms::brm(
+  exploratory2_formula,
+  data = nhb2, 
+  family = "gaussian",
+  prior = exploratory2_default_priors,
+  sample_prior = "only",
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  iter = 100000,
+  file = "./model-fits/nhb2/exploratory2_bayesmodel_priordraws_default_traits-as-DV")
+
+exploratory2_bayesmodel_informed <- brms::brm(
+  formula = exploratory2_formula,
+  data = nhb2,
+  family = "gaussian",
+  prior = exploratory2_informed_priors,
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb2/exploratory2_bayesmodel_informed_traits-as-DV"
+)
+
+exploratory2_priordraws_informed <- brms::brm(
+  exploratory2_formula,
+  data = nhb2, 
+  family = "gaussian",
+  prior = exploratory2_informed_priors,
+  sample_prior = "only",
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  iter = 100000,
+  file = "./model-fits/nhb2/exploratory2_bayesmodel_priordraws_informed_traits-as-DV")
+
+```
+
+### Model summaries
+
+```{r}
+summary(exploratory2_freqmodel)
+summary(exploratory2_bayesmodel_default)
+summary(exploratory2_bayesmodel_informed)
+```
+
+
+### Hypothesis test
+
+Frequentist tests of interaction effects
+
+```{r}
+# Coefficient estimate
+coef2_freqV <- exploratory2_freqmodel$coefficients["composite_political_orientation_z:conditionVolitional"]
+coef2_freqA <- exploratory2_freqmodel$coefficients["composite_political_orientation_z:conditionAttitude"]
+
+# Confidence interval
+confint2_freqV <- confint(exploratory2_freqmodel, "composite_political_orientation_z:conditionVolitional")
+confint2_freqA <- confint(exploratory2_freqmodel, "composite_political_orientation_z:conditionAttitude")
+
+# 90% Confidence interval
+confint2_freqV90 <- confint(exploratory2_freqmodel, "composite_political_orientation_z:conditionVolitional", prob = 0.90)
+confint2_freqA90 <- confint(exploratory2_freqmodel, "composite_political_orientation_z:conditionAttitude", prob = 0.90)
+
+# p-Value (computed from model output as for one-sided test)
+t_confirm2V <- summary(exploratory2_freqmodel)$coefficients["composite_political_orientation_z:conditionVolitional","t value"]
+t_confirm2A <- summary(exploratory2_freqmodel)$coefficients["composite_political_orientation_z:conditionAttitude","t value"]
+df_confirm2 <- exploratory2_freqmodel$df.residual
+p_confirm2V <- 1-pt(t_confirm2V, df_confirm2)
+p_confirm2A <- 1-pt(t_confirm2A, df_confirm2)
+
+data.frame("beta_z" = round(c(coef2_freqV, coef2_freqA), 2),
+           "CI_lower" = round(c(confint2_freqV[1], confint2_freqA[1]), 2),
+           "CI_upper" = round(c(confint2_freqV[2], confint2_freqA[2]), 2),
+           "CI_lower_90" = round(c(confint2_freqV90[1], confint2_freqA90[1]), 2),
+           "CI_upper_90" = round(c(confint2_freqV90[2], confint2_freqA90[2]), 2),
+           "p value" = round(c(p_confirm2V, p_confirm2A), 3))
+```
+
+Bayesian tests of interaction effects
+
+```{r}
+# Coefficient estimate
+coef2_defaultbayesV <- fixef(exploratory2_bayesmodel_default)["composite_political_orientation_z:conditionVolitional", "Estimate"]
+coef2_defaultbayesA <- fixef(exploratory2_bayesmodel_default)["composite_political_orientation_z:conditionAttitude", "Estimate"]
+
+coef2_informedbayesV <- fixef(exploratory2_bayesmodel_informed)["composite_political_orientation_z:conditionVolitional", "Estimate"]
+coef2_informedbayesA <- fixef(exploratory2_bayesmodel_informed)["composite_political_orientation_z:conditionAttitude", "Estimate"]
+
+# 95% Credible interval
+cred2_defaultbayesV <- fixef(exploratory2_bayesmodel_default)["composite_political_orientation_z:conditionVolitional", c("Q2.5", "Q97.5")]
+cred2_defaultbayesA <- fixef(exploratory2_bayesmodel_default)["composite_political_orientation_z:conditionAttitude", c("Q2.5", "Q97.5")]
+
+cred2_informedbayesV <- fixef(exploratory2_bayesmodel_informed)["composite_political_orientation_z:conditionVolitional", c("Q2.5", "Q97.5")]
+cred2_informedbayesA <- fixef(exploratory2_bayesmodel_informed)["composite_political_orientation_z:conditionAttitude", c("Q2.5", "Q97.5")]
+
+# 90% Credible interval
+cred90_defaultbayesV <- fixef(exploratory2_bayesmodel_default, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionVolitional", c("Q5", "Q95")]
+cred90_defaultbayesA <- fixef(exploratory2_bayesmodel_default, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionAttitude", c("Q5", "Q95")]
+
+cred90_informedbayesV <- fixef(exploratory2_bayesmodel_informed, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionVolitional", c("Q5", "Q95")]
+cred90_informedbayesA <- fixef(exploratory2_bayesmodel_informed, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionAttitude", c("Q5", "Q95")]
+
+# Bayes factor
+exploratory2_defaultbfV <- bayesfactor_parameters(exploratory2_bayesmodel_default,
+                       prior=exploratory2_priordraws_default, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z:conditionVolitional")
+exploratory2_defaultbfA <- bayesfactor_parameters(exploratory2_bayesmodel_default,
+                       prior=exploratory2_priordraws_default, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z:conditionAttitude")
+
+exploratory2_informedbfV <- bayesfactor_parameters(exploratory2_bayesmodel_informed,
+                       prior=exploratory2_priordraws_informed, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z:conditionVolitional")
+exploratory2_informedbfA <- bayesfactor_parameters(exploratory2_bayesmodel_informed,
+                       prior=exploratory2_priordraws_informed, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z:conditionAttitude")
+
+# Posterior probability
+postProb_defaultV <- hypothesis(exploratory2_bayesmodel_default, "composite_political_orientation_z:conditionVolitional < -0.10")$hypothesis$Post.Prob
+postProb_defaultA <- hypothesis(exploratory2_bayesmodel_default, "composite_political_orientation_z:conditionAttitude < -0.10")$hypothesis$Post.Prob
+
+postProb_informedV <- hypothesis(exploratory2_bayesmodel_informed, "composite_political_orientation_z:conditionVolitional < -0.10")$hypothesis$Post.Prob
+postProb_informedA <- hypothesis(exploratory2_bayesmodel_informed, "composite_political_orientation_z:conditionAttitude < -0.10")$hypothesis$Post.Prob
+
+# Interaction effect composite_political_orientation_z:conditionVolitional
+data.frame("prior" = c("default", "informed"),
+           "beta_z" = round(c(coef2_defaultbayesV, coef2_informedbayesV), 2),
+           "CI_lower_95" = round(c(cred2_defaultbayesV[1], cred2_informedbayesV[1]), 2),
+           "CI_upper_95" = round(c(cred2_defaultbayesV[2], cred2_informedbayesV[2]), 2),
+           "CI_lower_90" = round(c(cred90_defaultbayesV[1], cred90_informedbayesV[1]), 2),
+           "CI_upper_90" = round(c(cred90_defaultbayesV[2], cred90_informedbayesV[2]), 2),
+           "BFplus0" = round(c(exp(exploratory2_defaultbfV$log_BF), exp(exploratory2_informedbfV$log_BF)), 3),
+           "PostProb" = round(c(postProb_defaultV, postProb_informedV), 2))
+
+# Interaction effect composite_political_orientation_z:conditionAttitude
+data.frame("prior" = c("default", "informed"),
+           "beta_z" = round(c(coef2_defaultbayesA, coef2_informedbayesA), 2),
+           "CI_lower_95" = round(c(cred2_defaultbayesA[1], cred2_informedbayesA[1]), 2),
+           "CI_upper_95" = round(c(cred2_defaultbayesA[2], cred2_informedbayesA[2]), 2),
+           "CI_lower_90" = round(c(cred90_defaultbayesA[1], cred90_informedbayesA[1]), 2),
+           "CI_upper_90" = round(c(cred90_defaultbayesA[2], cred90_informedbayesA[2]), 2),
+           "BFplus0" = round(c(exp(exploratory2_defaultbfA$log_BF), exp(exploratory2_informedbfA$log_BF)), 3),
+           "PostProb" = round(c(postProb_defaultA, postProb_informedV), 2))
+```
+
+### Simple slopes analyses
+
+Frequentist
+
+```{r}
+# Fit simple slopes
+freqSlopes2 <- emtrends(exploratory2_freqmodel,  "condition", var = "composite_political_orientation_z")
+
+# Compute one-sided p-value
+freqSlopes_p <- 1-pt(test(freqSlopes2)$t.ratio, df=unique(test(freqSlopes2)$df))
+
+data.frame("condition" = summary(freqSlopes2)$condition,
+           "beta_z" = round(test(freqSlopes2)$composite_political_orientation_z.trend, 2),
+           "CI_lower" = round(summary(freqSlopes2)$lower.CL, 2),
+           "CI_upper" = round(summary(freqSlopes2)$upper.CL, 2),
+           "p.value" = round(freqSlopes_p, 3))
+```
+
+Bayesian
+
+```{r}
+# Compute two-sided analyses for credible intervals
+bayesSlopes_default_twoSided <- hypothesis(
+  exploratory2_bayesmodel_default,
+  c("composite_political_orientation_z = 0",
+    "composite_political_orientation_z + composite_political_orientation_z:conditionVolitional = 0",
+    "composite_political_orientation_z + composite_political_orientation_z:conditionAttitude = 0"))
+
+bayesSlopes_informed_twoSided <- hypothesis(
+  exploratory2_bayesmodel_informed,
+  c("composite_political_orientation_z = 0",
+    "composite_political_orientation_z + composite_political_orientation_z:conditionVolitional = 0",
+    "composite_political_orientation_z + composite_political_orientation_z:conditionAttitude = 0"))
+
+# Compute one-sided analyses for Bayes factors
+simpleslopes_bayes_default <- emtrends(exploratory2_bayesmodel_default, "condition", var="composite_political_orientation_z")
+simpleslopes_bayes0_default <- emtrends(exploratory2_priordraws_default, "condition", var="composite_political_orientation_z")
+bayesSlopes_default_oneSided <- bayesfactor_parameters(simpleslopes_bayes_default, prior = simpleslopes_bayes0_default, direction = "right")
+
+simpleslopes_bayes_informed <- emtrends(exploratory2_bayesmodel_informed, "condition", var="composite_political_orientation_z")
+simpleslopes_bayes0_informed <- emtrends(exploratory2_priordraws_informed, "condition", var="composite_political_orientation_z")
+bayesSlopes_informed_oneSided <- bayesfactor_parameters(simpleslopes_bayes_informed, prior = simpleslopes_bayes0_informed, direction = "right")
+
+# Compute posterior probability for slope > .10
+postprob_default <- hypothesis(
+  exploratory2_bayesmodel_default,
+  c("composite_political_orientation_z > 0.10",
+    "composite_political_orientation_z + composite_political_orientation_z:conditionVolitional > 0.10",
+    "composite_political_orientation_z + composite_political_orientation_z:conditionAttitude > 0.10")
+)
+
+postprob_informed <- hypothesis(
+  exploratory2_bayesmodel_informed,
+  c("composite_political_orientation_z > 0.10",
+    "composite_political_orientation_z + composite_political_orientation_z:conditionVolitional > 0.10",
+    "composite_political_orientation_z + composite_political_orientation_z:conditionAttitude > 0.10")
+)
+
+# Results summary for condition: Random
+data.frame("prior" = c("default", "informed"),
+           "beta_z" = round(c(bayesSlopes_default_twoSided$hypothesis$Estimate[1], bayesSlopes_informed_twoSided$hypothesis$Estimate[1]), 2),
+           "CI_lower" = round(c(bayesSlopes_default_twoSided$hypothesis$CI.Lower[1], bayesSlopes_informed_twoSided$hypothesis$CI.Lower[1]), 2),
+           "CI_upper" = round(c(bayesSlopes_default_twoSided$hypothesis$CI.Upper[1], bayesSlopes_informed_twoSided$hypothesis$CI.Upper[1]), 2),
+           "BFplus0" = round(c(exp(bayesSlopes_default_oneSided$log_BF[1]), exp(bayesSlopes_informed_oneSided$log_BF[1])), 3),
+           "postProb" = round(c(postprob_default$hypothesis$Post.Prob[1], postprob_informed$hypothesis$Post.Prob[1]), 2))
+
+# Results summary for condition: Volitional
+data.frame("prior" = c("default", "informed"),
+           "beta_z" = round(c(bayesSlopes_default_twoSided$hypothesis$Estimate[2], bayesSlopes_informed_twoSided$hypothesis$Estimate[2]), 2),
+           "CI_lower" = round(c(bayesSlopes_default_twoSided$hypothesis$CI.Lower[2], bayesSlopes_informed_twoSided$hypothesis$CI.Lower[2]), 2),
+           "CI_upper" = round(c(bayesSlopes_default_twoSided$hypothesis$CI.Upper[2], bayesSlopes_informed_twoSided$hypothesis$CI.Upper[2]), 2),
+           "BFplus0" = round(c(exp(bayesSlopes_default_oneSided$log_BF[2]), exp(bayesSlopes_informed_oneSided$log_BF[2])), 3),
+           "postProb" = round(c(postprob_default$hypothesis$Post.Prob[2], postprob_informed$hypothesis$Post.Prob[2]), 2))
+
+# Results summary for condition: Attitude
+data.frame("prior" = c("default", "informed"),
+           "beta_z" = round(c(bayesSlopes_default_twoSided$hypothesis$Estimate[3], bayesSlopes_informed_twoSided$hypothesis$Estimate[3]), 2),
+           "CI_lower" = round(c(bayesSlopes_default_twoSided$hypothesis$CI.Lower[3], bayesSlopes_informed_twoSided$hypothesis$CI.Lower[3]), 2),
+           "CI_upper" = round(c(bayesSlopes_default_twoSided$hypothesis$CI.Upper[3], bayesSlopes_informed_twoSided$hypothesis$CI.Upper[3]), 2),
+           "BFplus0" = round(c(exp(bayesSlopes_default_oneSided$log_BF[3]), exp(bayesSlopes_informed_oneSided$log_BF[3])), 3),
+           "postProb" = round(c(postprob_default$hypothesis$Post.Prob[3], postprob_informed$hypothesis$Post.Prob[3]), 2))
+
+```
+
+The analyses show a counterintuitive effect: While the ideological asymmetry effect persists in the Random and Volitional group, the effect does not seem to occur in the Attitudes group. This means that the sign of the interaction effect for Attitude is in the opposite direction than anticipated.  
+
+## Testing the mediating effect of morality, uncertainty intolerance, and norms
+
+### Model fitting
+
+Translating the model described in the analysis plan to variables in the dataset:
+
+* X: `composite_political_orientation_z`
+* M1: `nfcc_total_z`
+* M2: `mf_total_z`
+* M3: `norms_total_z`
+* Y: `z_ingroup_minus_outgroup_traits_positive`
+
+Parallel mediators are implemented without intercorrelations to mimic parallel mediation model in the PROCESS macro in SPSS, see also https://lhbikos.github.io/ReC_MultivModel/CompMed.html.
+
+
+```{r}
+# Define Bayesian mediation model
+f1 <- brms::bf(nfcc_total_z ~ composite_political_orientation_z)
+f2 <- brms::bf(mf_total_z ~ composite_political_orientation_z)
+f3 <- brms::bf(norms_total_z ~ composite_political_orientation_z)
+f4 <- brms::bf(z_ingroup_minus_outgroup_traits_positive ~ composite_political_orientation_z + nfcc_total_z + mf_total_z + norms_total_z)
+
+# Set prior on regression coefficients (necessary for BF calculation)
+exploratory3_priors <- c(set_prior("normal(0, 0.5)", class = "b"))
+
+exploratory3_bayesmodel <- brm(
+  f1+f2+f3+f4+set_rescor(FALSE),
+  data = nhb2,
+  family = "gaussian",
+  sample_prior = TRUE,
+  seed = 987654,
+  # silent = TRUE,
+  # refresh = 0,
+  iter = 100000,
+  warmup = 5000,
+  chains = 4,
+  file = "./model-fits/nhb2/exploratory3_bayesmodel_mediation_traits-as-DV")
+
+# Define frequentist mediation model
+medmodel <- "
+    z_ingroup_minus_outgroup_traits_positive ~ b1*nfcc_total_z + b2*mf_total_z + b3*norms_total_z + c_p*composite_political_orientation_z
+    nfcc_total_z ~ a1*composite_political_orientation_z
+    mf_total_z ~ a2*composite_political_orientation_z
+    norms_total_z ~ a3*composite_political_orientation_z
+    
+    indirectNFCC := a1 * b1
+    indirectMF := a2 * b2
+    indirectNORM := a3 * b3
+    total_indirects := indirectNFCC + indirectMF + indirectNORM
+    total_c := c_p + (indirectNFCC) + (indirectMF) + (indirectNORM)
+    direct := c_p
+    propNFCC := indirectNFCC/total_c
+    propMF := indirectMF/total_c
+    propNORM := indirectNORM/total_c
+    total_propM := total_indirects/total_c
+ "
+
+set.seed(987654)
+exploratory3_freqmodel <- lavaan::sem(medmodel, 
+                                       data = nhb2, 
+                                       se = "bootstrap",
+                                       missing = "fiml", 
+                                       bootstrap = 1000)
+```
+
+### Model summaries
+
+```{r}
+summary(exploratory3_bayesmodel)
+summary(exploratory3_freqmodel)
+```
+
+### Hypothesis test
+
+Frequentist quantities
+
+```{r}
+# Get parameter estimates, p-values and 95% CIs
+params <- lavaan::summary(exploratory3_freqmodel, standardized = TRUE, ci = TRUE)
+
+# Get 90% CIs
+cis <- parameterEstimates(exploratory3_freqmodel, level = .90)
+
+report <- tail(params$pe, 10)[, c("label", "est", "pvalue", "ci.lower", "ci.upper")]
+report$CI_lower90 <- tail(cis$ci.lower, 10)
+report$CI_upper90 <- tail(cis$ci.upper, 10)
+report[, 2:7] <- round(report[, 2:7], 3)
+
+report
+```
+
+
+Bayesian quantities
+
+```{r}
+# Bayesian mediation model summary
+exploratory3_paths <- rbind(c("nfcctotalz_composite_political_orientation_z", "zingroupminusoutgrouptraitspositive_nfcc_total_z"),
+                             c("mftotalz_composite_political_orientation_z", "zingroupminusoutgrouptraitspositive_mf_total_z"),
+                             c("normstotalz_composite_political_orientation_z", "zingroupminusoutgrouptraitspositive_norms_total_z"))
+
+reportbayesmediation(model = exploratory3_bayesmodel,
+                     abpaths = exploratory3_paths,
+                     directpath = "zingroupminusoutgrouptraitspositive_composite_political_orientation_z")
+
+```
+
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```

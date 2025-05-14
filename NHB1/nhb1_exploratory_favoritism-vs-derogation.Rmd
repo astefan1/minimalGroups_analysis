@@ -1,0 +1,1405 @@
+---
+title: 'Exploratory Analyses NHB1: Ingroup Favoritism vs. Outgroup Derogation'
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(reshape2)
+library(nlme)
+library(emmeans)
+library(brms)
+library(bayestestR)
+library(Bayesrel)
+library(knitr)
+```
+
+## Read in and combine data from Prolific and MTurk
+
+```{r}
+
+# Read in data from both studies
+nhb1a <- read.csv('../../data/nhb1a_processed.csv')
+nhb1b <- read.csv('../../data/nhb1b_processed.csv')
+
+nhb1a$platform <- "Prolific"
+nhb1b$platform <- "MTurk"
+
+# Combine data
+nhb1 <- rbind(nhb1a, nhb1b)
+
+# Compute standardized scores for composite political orientation in the combined dataset
+nhb1$z_mean_SECS <- scale(nhb1$mean_SECS)
+nhb1$z_EconOrient <- scale(nhb1$EconOrient)
+nhb1$z_SocOrient <- scale(nhb1$SocOrient)
+nhb1$z_PolOrient <- scale(nhb1$PolOrient)
+nhb1$composite_political_orientation <- rowMeans(nhb1[, c("z_mean_SECS", "z_EconOrient", "z_SocOrient", "z_PolOrient")], na.rm = TRUE)
+nhb1$composite_political_orientation_z <- scale(nhb1$composite_political_orientation)
+
+# Compute z-scored ingroup and outgroup variables in combined dataset
+nhb1$z_OutgroupIdentify <- scale(nhb1$OutgroupIdentify)
+nhb1$z_OutgroupTraits <- scale(nhb1$mean_outgroup_traits_positive)
+nhb1$z_OutgroupPoints <- scale(nhb1$total_outgroup_points)
+nhb1$OutgroupIndex <- rowMeans(nhb1[, c("z_OutgroupIdentify","z_OutgroupTraits","z_OutgroupPoints")], na.rm = TRUE)
+nhb1$OutgroupIndex_z <- scale(nhb1$OutgroupIndex)
+nhb1$z_IngroupIdentify <- scale(nhb1$IngroupIdentify)
+nhb1$z_IngroupTraits <- scale(nhb1$mean_ingroup_traits_positive)
+nhb1$z_IngroupPoints <- scale(nhb1$total_ingroup_points)
+nhb1$IngroupIndex <- rowMeans(nhb1[, c("z_IngroupIdentify","z_IngroupTraits","z_IngroupPoints")], na.rm = TRUE)
+nhb1$IngroupIndex_z <- scale(nhb1$IngroupIndex)
+```
+
+## Preregistered exploratory analysis
+
+From the main text of the accepted Stage 1 Registered Report:
+
+*We will also conduct a series of exploratory moderation analyses (see Supplementary Information: Exploratory Analyses). In one model, we will separately examine the components of the intergroup bias difference scores (e.g., points assigned to the ingroup and points assigned to the outgroup), to examine whether ideology is more strongly associated with ingroup favoritism or outgroup derogation.*
+
+From the Supplementary Materials:
+
+*We will separate our intergroup bias measure into separate indices of positivity/negativity toward both (1) the ingroup and (2) the outgroup. To do so, we will z-score the identification, evaluation, and allocation measures for both the ingroup and outgroup. We will then calculate the mean of these z-scored measures to create composite indices of positivity/negativity for both the ingroup and outgroup. We will conduct repeated measures ANOVAs with measure type (ingroup positivity versus outgroup negativity), ideology (in model 1) and ideological extremity (in model 2), and their interactions as independent measures, with group ratings as the dependent measure. If this interaction is significant, we will examine simple slopes to identify the measure on which these associations emerge most strongly. This will allow us to determine whether ingroup favoritism versus outgroup derogation is the primary driver of any observed effects.*
+
+It is impossible to compute a moderation analysis with an ANOVA, so we will use a regression analysis instead. We will compute the analysis in all three samples, following our analysis strategy from the confirmatory analyses.
+
+## Analysis in the combined sample
+
+### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1Long <- melt(nhb1[, c("IngroupIndex_z", 
+                          "OutgroupIndex_z", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("IngroupIndex_z", "OutgroupIndex_z"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Define model formulas
+exploratory1_formulaF <- Rating ~ Group * composite_political_orientation_z
+exploratory1_formulaB <- Rating ~ Group * composite_political_orientation_z + (1|ResponseId)
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1Long,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_priors <- c(
+  set_prior("normal(0, 0.5)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0, 0.5)", class = "b", coef="GroupOutgroupIndex_z"),
+  set_prior("normal(0, 0.2)", class = "b", coef="GroupOutgroupIndex_z:composite_political_orientation_z")
+  )
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1Long,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3_bayesmodel_favoritismVderogation")
+  
+```
+
+### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["GroupOutgroupIndex_z:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["GroupOutgroupIndex_z:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("GroupOutgroupIndex_z:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + GroupOutgroupIndex_z:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+There is extreme evidence in favor of an interaction: Attitude towards the ingroup gets more positive with more conservatism (positive slope for ingroup), but does not change towards the outgroup (strong evidence for H0, BF10 = 0.05 = 1/20). 
+
+## Analysis in the Prolific sample
+
+### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1aLong <- melt(nhb1a[, c("IngroupIndex_z", 
+                          "OutgroupIndex_z", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("IngroupIndex_z", "OutgroupIndex_z"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1aLong,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1aLong,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3a_bayesmodel_favoritismVderogation")
+  
+```
+
+### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["GroupOutgroupIndex_z:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["GroupOutgroupIndex_z:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("GroupOutgroupIndex_z:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + GroupOutgroupIndex_z:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+Analysis results from combined sample are replicated (extreme evidence in favor of interaction, positive slope in ingroup, evidence for zero slope in outgroup)
+
+## Analysis in the MTurk sample
+
+### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1bLong <- melt(nhb1b[, c("IngroupIndex_z", 
+                          "OutgroupIndex_z", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("IngroupIndex_z", "OutgroupIndex_z"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1bLong,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1bLong,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3b_bayesmodel_favoritismVderogation")
+  
+```
+
+### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["GroupOutgroupIndex_z:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["GroupOutgroupIndex_z:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("GroupOutgroupIndex_z:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + GroupOutgroupIndex_z:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+Analysis results from combined sample are replicated (evidence in favor of interaction, positive slope in ingroup, evidence for zero slope in outgroup). However, evidence for interaction is much weaker than in previous tests.
+
+## Conclusion and justification for further exploratory analyses
+
+Across all three datasets, there is strong evidence in favor of the interaction, and evidence in favor of ingroup favoritism (more conservative political orientation associated with higher ingroup scores), but strong evidence in favor of the null hypothesis when it comes to outgroup derogation (no change in outgroup scores associated with political orientation).
+
+Since the combined bias measure in the main confirmatory analysis suffered from low internal consistency (cf. reliability script), we suspected that the combined measures of ingroup favoritism (i.e., standardized average of points, identity ratings, and traits assigned to ingroup) and outgroup derogation (i.e., standardized average of points, identity ratings, and traits assigned to outgroup) may also suffer from low internal consistency. For this reason, we conducted reliability analyses on the ingroup and outgroup index.
+
+The reliability analyses are reported below. As can be seen, the internal consistency of both scales is very low. Correlations between the items are consistently below $r = .10$. Because of this, we decided to run the analyses separately for the three scores.
+
+## Reliability analyses
+
+Combined sample
+
+```{r}
+# Cronbach's alpha
+strel(nhb1[, c("z_OutgroupPoints",
+               "z_OutgroupTraits",
+               "z_OutgroupIdentify")], 
+      estimates = "alpha")
+
+# Correlation
+kable(data.frame(cor(nhb1[, c("z_OutgroupPoints", 
+                              "z_OutgroupTraits", 
+                              "z_OutgroupIdentify")], use = "pairwise"), 
+                 row.names = c("Points", "Traits", "Identification")), 
+      digits = 3, 
+      col.names = c("Points", "Traits", "Identification"),
+      caption = "Combined Sample")
+```
+
+Prolific sample
+
+```{r}
+# Cronbach's alpha
+strel(nhb1a[, c("z_OutgroupPoints",
+               "z_OutgroupTraits",
+               "z_OutgroupIdentify")], 
+      estimates = "alpha")
+
+# Correlation
+kable(data.frame(cor(nhb1a[, c("z_OutgroupPoints", 
+                              "z_OutgroupTraits", 
+                              "z_OutgroupIdentify")], use = "pairwise"), 
+                 row.names = c("Points", "Traits", "Identification")), 
+      digits = 3, 
+      col.names = c("Points", "Traits", "Identification"),
+      caption = "Combined Sample")
+```
+
+MTurk sample
+
+```{r}
+# Cronbach's alpha
+strel(nhb1b[, c("z_OutgroupPoints",
+               "z_OutgroupTraits",
+               "z_OutgroupIdentify")], 
+      estimates = "alpha")
+
+# Correlation
+kable(data.frame(cor(nhb1b[, c("z_OutgroupPoints", 
+                              "z_OutgroupTraits", 
+                              "z_OutgroupIdentify")], use = "pairwise"), 
+                 row.names = c("Points", "Traits", "Identification")), 
+      digits = 3, 
+      col.names = c("Points", "Traits", "Identification"),
+      caption = "Combined Sample")
+```
+
+## Analysis separately for Tajfel matrix points
+
+### Analysis in the combined sample
+
+#### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1Long <- melt(nhb1[, c("z_IngroupPoints", 
+                          "z_OutgroupPoints", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("z_IngroupPoints", "z_OutgroupPoints"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Define model formulas
+exploratory1_formulaF <- Rating ~ Group * composite_political_orientation_z
+exploratory1_formulaB <- Rating ~ Group * composite_political_orientation_z + (1|ResponseId)
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1Long,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_priors <- c(
+  set_prior("normal(0, 0.5)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0, 0.5)", class = "b", coef="Groupz_OutgroupPoints"),
+  set_prior("normal(0, 0.2)", class = "b", coef="Groupz_OutgroupPoints:composite_political_orientation_z")
+  )
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1Long,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3_bayesmodel_favoritismVderogation-points")
+  
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["Groupz_OutgroupPoints:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["Groupz_OutgroupPoints:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("Groupz_OutgroupPoints:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + Groupz_OutgroupPoints:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+Analysis __contradicts__ initial analysis where combined score was used. Here, outgroup derogation can be considered the driver of bias. There is extreme evidence for an interaction, but as conservatism increases, fewer points are assigned to the outgroup (negative slope in outgroup, extreme evidence for alternative hypothesis), while there is unclear evidence with regard to the ingroup (BF10 = 1.18, meaning data are almost equally likely under H0 and H1, but positive coefficient indicates potential slight ingroup favoritism). 
+
+### Analysis in the Prolific sample
+
+#### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1aLong <- melt(nhb1a[, c("z_IngroupPoints", 
+                          "z_OutgroupPoints", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("z_IngroupPoints", "z_OutgroupPoints"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1aLong,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1aLong,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3a_bayesmodel_favoritismVderogation-points")
+  
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["Groupz_OutgroupPoints:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["Groupz_OutgroupPoints:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("Groupz_OutgroupPoints:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + Groupz_OutgroupPoints:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+Analysis is in line with analysis on Tajfel matrices in the combined sample: There is evidence in favor of ingroup favoritism and outgroup derogation (this time, moderate evidence for both).
+
+### Analysis in the MTurk sample
+
+#### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1bLong <- melt(nhb1b[, c("z_IngroupPoints", 
+                          "z_OutgroupPoints", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("z_IngroupPoints", "z_OutgroupPoints"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1bLong,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1bLong,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3b_bayesmodel_favoritismVderogation-points")
+  
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["Groupz_OutgroupPoints:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["Groupz_OutgroupPoints:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("Groupz_OutgroupPoints:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + Groupz_OutgroupPoints:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+Analysis __contradicts__ Tajfel matrix analysis on the full sample, in that there is evidence in favor of outgroup derogation, but evidence against ingroup favoritism. The overall evidence in favor of an interaction is fairly low though.  
+
+## Analysis separately for ingroup and outgroup traits
+
+### Analysis in the combined sample
+
+#### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1Long <- melt(nhb1[, c("z_IngroupTraits", 
+                          "z_OutgroupTraits", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("z_IngroupTraits", "z_OutgroupTraits"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Define model formulas
+exploratory1_formulaF <- Rating ~ Group * composite_political_orientation_z
+exploratory1_formulaB <- Rating ~ Group * composite_political_orientation_z + (1|ResponseId)
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1Long,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_priors <- c(
+  set_prior("normal(0, 0.5)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0, 0.5)", class = "b", coef="Groupz_OutgroupTraits"),
+  set_prior("normal(0, 0.2)", class = "b", coef="Groupz_OutgroupTraits:composite_political_orientation_z")
+  )
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1Long,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3_bayesmodel_favoritismVderogation-traits")
+  
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["Groupz_OutgroupTraits:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["Groupz_OutgroupTraits:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("Groupz_OutgroupTraits:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + Groupz_OutgroupTraits:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+Analysis results from combined score are replicated (strong evidence in favor of interaction, positive slope in ingroup, evidence for zero slope in outgroup).
+
+### Analysis in the Prolific sample
+
+#### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1aLong <- melt(nhb1a[, c("z_IngroupTraits", 
+                          "z_OutgroupTraits", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("z_IngroupTraits", "z_OutgroupTraits"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1aLong,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1aLong,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3a_bayesmodel_favoritismVderogation-traits")
+  
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["Groupz_OutgroupTraits:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["Groupz_OutgroupTraits:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("Groupz_OutgroupTraits:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + Groupz_OutgroupTraits:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+Analysis results from combined score are replicated (strong evidence in favor of interaction, positive slope in ingroup, evidence for zero slope in outgroup)
+
+### Analysis in the MTurk sample
+
+#### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1bLong <- melt(nhb1b[, c("z_IngroupTraits", 
+                          "z_OutgroupTraits", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("z_IngroupTraits", "z_OutgroupTraits"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1bLong,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1bLong,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3b_bayesmodel_favoritismVderogation-traits")
+  
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["Groupz_OutgroupTraits:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["Groupz_OutgroupTraits:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("Groupz_OutgroupTraits:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + Groupz_OutgroupTraits:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+Results __contradict__ earlier results from combined score and trait ratings in the combined and Prolific sample. There is weak evidence against an interaction (BF10 = 0.52), both slope coefficients are descriptively positive but there is evidence for the null for both (weak evidence for the ingroup, strong evidence for the outgroup).
+
+## Analysis separately for ingroup/outgroup identification ratings
+
+### Analysis in the combined sample
+
+#### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1Long <- melt(nhb1[, c("z_IngroupIdentify", 
+                          "z_OutgroupIdentify", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("z_IngroupIdentify", "z_OutgroupIdentify"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Define model formulas
+exploratory1_formulaF <- Rating ~ Group * composite_political_orientation_z
+exploratory1_formulaB <- Rating ~ Group * composite_political_orientation_z + (1|ResponseId)
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1Long,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_priors <- c(
+  set_prior("normal(0, 0.5)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0, 0.5)", class = "b", coef="Groupz_OutgroupIdentify"),
+  set_prior("normal(0, 0.2)", class = "b", coef="Groupz_OutgroupIdentify:composite_political_orientation_z")
+  )
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1Long,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3_bayesmodel_favoritismVderogation-identify")
+  
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["Groupz_OutgroupIdentify:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["Groupz_OutgroupIdentify:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("Groupz_OutgroupIdentify:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + Groupz_OutgroupIdentify:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+Analysis results from combined score are replicated (strong evidence in favor of interaction, positive slope in ingroup, evidence for zero slope in outgroup).
+
+### Analysis in the Prolific sample
+
+#### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1aLong <- melt(nhb1a[, c("z_IngroupIdentify", 
+                          "z_OutgroupIdentify", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("z_IngroupIdentify", "z_OutgroupIdentify"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1aLong,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1aLong,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3a_bayesmodel_favoritismVderogation-identify")
+  
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["Groupz_OutgroupIdentify:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["Groupz_OutgroupIdentify:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("Groupz_OutgroupIdentify:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + Groupz_OutgroupIdentify:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+Analysis results from combined score are replicated (strong evidence in favor of interaction, positive slope in ingroup, evidence for zero slope in outgroup).
+
+### Analysis in the MTurk sample
+
+#### Model fitting
+
+```{r}
+# Reshape relevant data to long format
+nhb1bLong <- melt(nhb1b[, c("z_IngroupIdentify", 
+                          "z_OutgroupIdentify", 
+                          "composite_political_orientation_z",
+                          "ResponseId")], 
+                 id.vars = c("ResponseId", "composite_political_orientation_z"), 
+                 measure.vars = c("z_IngroupIdentify", "z_OutgroupIdentify"), 
+                 variable.name = "Group",
+                 value.name = "Rating")
+
+# Frequentist model
+exploratory1_freqmodel <- lme(exploratory1_formulaF, 
+                              random =~1|ResponseId, 
+                              method = "REML",
+                              data = nhb1bLong,
+                              na.action = na.omit)
+exploratory1_freqslopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Bayesian model
+exploratory1_bayesmodel <- brm(exploratory1_formulaB,
+                               data=nhb1bLong,
+                               family = "gaussian",
+                               prior = exploratory1_priors,
+                               sample_prior = TRUE,
+                               iter = 100000,
+                               chains = 4,
+                               seed = 987654,
+                               #silent = TRUE,
+                               #refresh = 0,
+                               warmup = 5000,
+                               save_pars = save_pars(group = FALSE),
+                               control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                               file = "./model-fits/nhb1/exploratory3b_bayesmodel_favoritismVderogation-identify")
+  
+```
+
+#### Model summaries
+
+```{r}
+summary(exploratory1_freqmodel)
+summary(exploratory1_bayesmodel)
+```
+
+#### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+freqTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                       "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "p value" = rep(NA, 3))
+
+# Interaction effect
+freqTest[1, c(2,5)] <- summary(exploratory1_freqmodel)$tTable["Groupz_OutgroupIdentify:composite_political_orientation_z",
+                                                              c("Value", "p-value")]
+freqTest[1, 3:4] <- intervals(exploratory1_freqmodel, which = "fixed")$fixed["Groupz_OutgroupIdentify:composite_political_orientation_z",
+                                                            c("lower", "upper")]
+freqSlopes <- emtrends(exploratory1_freqmodel,  "Group", var = "composite_political_orientation_z")
+
+# Simple slopes
+freqTest[2:3, 2] <- test(freqSlopes)$composite_political_orientation_z.trend
+freqTest[2:3, 3] <- summary(freqSlopes)$lower.CL
+freqTest[2:3, 4] <- summary(freqSlopes)$upper.CL
+freqTest[2:3, 5] <- test(freqSlopes)$p.value
+
+freqTest[, 2:5] <- round(freqTest[, 2:5], 3)
+
+freqTest
+```
+
+Bayesian testing quantities
+
+```{r}
+bayesTest <- data.frame("Effect" = c("Interaction", "Slope Ingroup", "Slope Outgroup"),
+                        "beta_z" = rep(NA, 3),
+                       "CI_lower" = rep(NA, 3),
+                       "CI_upper" = rep(NA, 3),
+                       "BF10" = rep(NA, 3))
+bayesSlopes <- hypothesis(exploratory1_bayesmodel,
+           c("Groupz_OutgroupIdentify:composite_political_orientation_z = 0",
+             "composite_political_orientation_z=0",
+             "composite_political_orientation_z + Groupz_OutgroupIdentify:composite_political_orientation_z = 0"))
+
+bayesTest[,2] <- bayesSlopes$hypothesis$Estimate
+bayesTest[,3] <- bayesSlopes$hypothesis$CI.Lower
+bayesTest[,4] <- bayesSlopes$hypothesis$CI.Upper
+bayesTest[,5] <- 1/bayesSlopes$hypothesis$Evid.Ratio
+
+bayesTest[, 2:5] <- round(bayesTest[, 2:5], 3)
+
+bayesTest
+```
+
+Results __contradict__ analysis results for combined score as well as for identification ratings in the combined and Prolific samples in that there is anecdotal evidence against an interaction. However, looking at the simple slope tests, the pattern is repeated with strong evidence in favor of a non-zero slope in the ingroup, and evidence in favor of a zero slope in the outgroup (albeit very weak). Notably, the outgroup coefficient is descriptively positive rather than negative, which would point towards a general favoritism towards ingroup and outgroup.
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```
+

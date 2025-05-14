@@ -1,0 +1,275 @@
+---
+title: "nhb1_results"
+author: "Youssef Amin"
+date: "2024-12-11"
+output: html_document
+---
+## Load packages
+```{r setup, message=FALSE, warning=FALSE, error = FALSE}
+library(bayestestR)
+library(BayesFactor)
+library(ggtext)
+library(interactions)
+library(brms)
+library(tidyverse)
+library(magrittr)
+library(bayestestR)
+library(BayesFactor)
+library(lme4)
+library(nlme)
+library(logspline)
+library(mediation)
+library(corrplot)
+library(emmeans)
+library(Hmisc)
+library(reghelper)
+library(jtools)
+testSlopesBinaryInteraction <- function(modelfit){
+  SE <- coef(summary(modelfit))[3,"Std.Error"]
+  param_baseline <- coef(summary(modelfit))[3, "Value"]
+  param_otherGroup <- coef(summary(modelfit))[4, "Value"] + param_baseline
+  tvals <- c(param_baseline, param_otherGroup)/SE
+  df <- coef(summary(modelfit))[3,"DF"]
+  pvals <- 2*pt(-abs(tvals), df)
+  names(pvals) <- c("baseline group", "non-baseline group")
+  out <- rbind(pvals, estimates=c(param_baseline, param_otherGroup))
+  return(out)
+}
+```
+  
+<br>
+<br>
+
+## Read in data
+```{r}
+# Set seed
+set.seed (987654)
+nhb1 <- read.csv("../data/nhb1_bothsamples_processed.csv")
+nhb1$WhichSample <- factor(nhb1$WhichSample)
+```
+
+
+# Confirmatory Analyses
+
+## Summary
+1. <span style="color:green">Ideology</span> predicts <span style="color:green">intergroup bias</span>. 
+2. <span style="color:red">Sample type</span> does <span style ="color:red">not</span> moderate the relationship between <span style="color:red">ideology</span> and <span style="color:red">bias</span>.
+<br>
+<br>
+
+## Confirmatory 1: <span style="color:green">Ideology</span> predicts <span style="color:green">bias</span>
+```{r confirmatory 1 formula}
+confirmatory1_formula <- mean_intergroup_bias_z ~ composite_political_orientation_z
+```
+<br>
+
+### Compute Frequentist
+```{r confirmatory 1 compute frequentist}
+confirmatory1_freqmodel <- lm(confirmatory1_formula, nhb1)
+df_confirm1 <- confirmatory1_freqmodel$df.residua
+t_confirm1 <- confirmatory1_freqmodel$coefficients[["composite_political_orientation_z"]]/summary(confirmatory1_freqmodel)$coefficients["composite_political_orientation_z","Std. Error"]
+p_confirm1 <- 1-pt(t_confirm1, df_confirm1)
+```
+<br>
+
+### Compute Bayesian
+```{r confirmatory 1 compute bayseian, results = 'hide', warning=FALSE, message=FALSE }
+### Define priors for the regression model #REMEMBER TO SET warmup = 5000 and iter = 100000
+confirmatory1_priors <- c(set_prior("normal(0, 0.5)", class = "b"))
+```
+
+#### Compute Bayesian
+# Run the regression model
+```{r confirmatory 1 default priors}
+confirmatory1_bayesmodel <- brm(
+  formula = confirmatory1_formula, 
+  data = nhb1, 
+  family = gaussian(),
+  prior = confirmatory1_priors,
+  sample_prior = "no",
+  iter = 100000,  # Adjust iterations based on convergence diagnostics
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000
+)
+
+confirmatory1_priordraws<- brms::brm(confirmatory1_formula, 
+                            data = nhb1, 
+                            family = "gaussian",
+                            prior = confirmatory1_priors,
+                            sample_prior = "only",
+                            seed = 987654,
+                            silent = TRUE,
+                            refresh = 0,
+                            iter = 100000)
+
+confirmatory1_bf <- bayesfactor_parameters(confirmatory1_bayesmodel,
+                       prior=confirmatory1_priordraws, 
+                       direction = "right", 
+                       parameters = "composite_political_orientation_z")
+```
+
+
+
+<br>
+```{r results='hide', echo=FALSE, warning=FALSE, message=FALSE}
+confirmatory1_bayesmodel
+confirmatory1_bayesmodel[["fit"]]
+```
+
+```{r confirmatory 1 plot, results='hide', echo=FALSE, warning=FALSE, message=FALSE}
+confirmatory1_bf_long <- round(exp(confirmatory1_bf$log_BF), 2)
+confirmatory1_beta <- round(confirmatory1_bayesmodel[["fit"]]@.MISC[["summary"]]$msd["b_composite_political_orientation_z", "mean"],2)
+confirmatory1_plot <- ggplot(nhb1, aes(x = composite_political_orientation_z, y = mean_intergroup_bias_z, 
+                                       color = composite_political_orientation_z)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", color = "black", linetype = "solid") +
+  scale_color_gradient2(low = "darkblue", mid = "darkgrey", high = "red", midpoint = 0) +
+  labs(
+    x = "Ideology (z-scored)",
+    y = "Minimal Intergroup Bias (z-scored)",
+    title = "Relationship between Ideology and Minimal Intergroup Bias",
+    color = "Ideology"
+  ) +
+  theme_minimal() +
+  annotate("text", x = Inf, y = Inf, 
+           label = 
+             bquote(beta[z] == .(paste(confirmatory1_beta, ",", sep =''))~
+                      'BF'[10] == .(formatC(log10(confirmatory1_bf_long), format = "fg", digits = 3)) %*% 10^.(floor(log10(confirmatory1_bf_long)))),
+           parse = FALSE,
+           hjust = 1.1, vjust = 1.1, size = 5, color = "black") +
+  theme(plot.title = element_text(hjust = 0.5))
+  confirmatory1_plot
+```
+
+### Confirmatory 1 Results: <span style="color:green">Ideology</span> predicts <span style="color:green">intergroup bias</span>. 
+```{r confirmatory 1 results}
+###FREQUENTIST
+summary(confirmatory1_freqmodel)
+print(paste0("Confirmatory 1 p value is ", p_confirm1))
+confint(confirmatory1_freqmodel)
+
+
+###BAYESIAN
+summary(confirmatory1_bayesmodel)
+confirmatory1_bf
+```
+<br>
+<br>
+
+## Confirmatory 2: <span style="color:red">Sample type</span> does <span style ="color:red">not</span> moderate the relationship between <span style="color:red">ideology</span> and <span style="color:red">bias</span>.
+```{r confirmatory 2 formula}
+confirmatory2_formula <- mean_intergroup_bias_z ~ composite_political_orientation_z + WhichSample + composite_political_orientation_z:WhichSample
+```
+<br>
+
+### Compute Frequentist
+```{r confirmatory 2 compute frequentist}
+confirmatory2_freqmodel <- lm(confirmatory2_formula, data = nhb1)
+```
+<br>
+
+### Compute Bayesian
+```{r confirmatory 2 compute bayesian, results = 'hide', warning=FALSE, message=FALSE }
+priors_list <- get_prior(
+  formula = confirmatory2_formula,
+  data = nhb1,
+  family = gaussian()
+)
+priors_list$coef #use this to get the names of the variables/their format you need to input into modelprios
+
+
+confirmatory2_priors <- c(set_prior("normal(0, 0.5)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0, 0.5)", class = "b", coef="WhichSampleB"),
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:WhichSampleB"))
+
+
+confirmatory2_bayesmodel <- brms::brm(
+  formula = confirmatory2_formula, 
+                  data = nhb1, 
+                  family = "gaussian",
+                  prior = confirmatory2_priors,
+                  sample_prior = "no",
+                  iter = 100000,
+                  warmup = 5000,
+                  chains = 4,
+                  seed = 987654)
+
+confirmatory2_priordraws <- brms::brm(confirmatory2_formula, 
+                        data = nhb1, 
+                        family = "gaussian",
+                        prior = confirmatory2_priors,
+                        sample_prior = "only",
+                        iter = 100000,
+                        seed = 987654)
+
+confirmatory2_bf <- bayesfactor_parameters(confirmatory2_bayesmodel,
+                       prior=confirmatory2_priordraws,
+                       direction = "two-sided", 
+                       parameters = "composite_political_orientation_z:WhichSample")
+
+```
+<br>
+
+```{r confirmatory 2 plot, echo = FALSE, results='hide', warning=FALSE, message=FALSE}
+# Define the facet labels
+facet_labels <- c(
+  A = "Prolific",
+  B = "MTurk"
+)
+
+# Calculate betas and format them with subscript z
+betas <- by(nhb1, nhb1$WhichSample, function(subdata){
+  model <- lm(confirmatory1_formula, data = subdata)
+  paste("beta[z] == ", round(coef(model)[2], 3))
+}, simplify = FALSE)
+
+# Create the data frame for annotations
+confirmatory2_plotData <- data.frame(
+  WhichSample = names(betas),
+  label = unname(unlist(betas))
+)
+
+# Ensure the condition column is a factor and matches the facet labels
+confirmatory2_plotData$WhichSample <- factor(confirmatory2_plotData$WhichSample, levels = names(facet_labels))
+nhb1$WhichSample <- factor(nhb1$WhichSample, levels = names(facet_labels))
+
+# Create the plot
+confirmatory2_plot <- ggplot(nhb1, aes(x = composite_political_orientation_z, y = mean_intergroup_bias_z, color = composite_political_orientation_z)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", color = "black", linetype = "solid") + # Adding the regression line
+  scale_color_gradient2(low = "blue", mid = "darkgrey", high = "red", midpoint = 0) +
+  labs(
+    x = "Ideology (z-scored)",
+    y = "Minimal Intergroup Bias (z-scored)",
+    title = "Sample tpye as moderator",
+    color = "Ideology"
+  ) +
+  facet_wrap(~ WhichSample, labeller = as_labeller(facet_labels)) + # Changing facet labels
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))  + 
+  geom_text(
+    data = confirmatory2_plotData,
+    mapping = aes(x = 0, y = 4, label = label),
+    hjust = -0.1,
+    vjust = -1,
+    inherit.aes = FALSE,
+    parse = TRUE # This ensures expressions are correctly interpreted
+  )
+confirmatory2_plot
+```
+
+<br>
+
+### Confirmatory 2 Results: <span style="color:red">Sample type</span> does <span style ="color:red">not</span> moderate the relationship between <span style="color:red">ideology</span> and <span style="color:red">bias</span>.
+```{r confirmatory 2 results}
+###FREQUENTIST
+summary(confirmatory2_freqmodel)
+confint(confirmatory2_freqmodel)
+
+###BAYESIAN
+summary(confirmatory2_bayesmodel)
+confirmatory2_bf
+```

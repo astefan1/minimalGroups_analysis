@@ -1,0 +1,323 @@
+---
+title: "Mini-Meta Analysis"
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Preregistration (Stage 1 Report)
+
+From the Summary Analyses section:
+
+*Following recent methodological recommendations, we will also conduct an internal “mini-meta-analysis” of these five studies to provide additional statistical power, estimate an average effect size (across different participant samples and conditions), and examine potential moderators. Because we will have a nested structure, with individual studies having multiple distinct groups of participants (e.g., those assigned to different conditions in Study 2), and all studies collecting multiple observations (i.e., distinct measures of intergroup bias and political ideology) from a single group of participants, we will fit a multi-level meta-analysis model, specifying nested random effects for study, group, and observation. We will compute the average effect size of the relations between ideology and intergroup bias. We will conduct Cochran’s Q-tests to determine if there is significant heterogeneity in our observed effect sizes. If so, we will examine potential moderators of this effect (e.g., sample type: MTurk versus Prolific; Different group conditions as in Studies 2 and 4).*
+
+and further:
+
+*As above, for all analyses in which statistically significant results are not obtained and/or average effect sizes are smaller than r = .10, we will conduct inferiority tests by computing 90% confidence intervals. If the resulting confidence intervals do not include (or exceed) .1, we will conclude that the effect (e.g., of ideology on that specific measure of ingroup favoritism) either does not exist or is too small to be of any practical importance.*
+
+We conduct the mini-meta analysis in the frequentist and Bayesian framework and report p-values, Bayes factors, 90% and 95% confidence and credible intervals. Since there is no standard Bayesian implementation of the Q-test, we compute a Savage-Dickey density ratio testing whether the study- and group-level variance is equal to zero. We first implement a 3-level meta-analysis (participants nested in groups nested in studies) investigating the correlations between ideology and the combined bias measure.
+
+We follow the recommendations of [https://bookdown.org/MathiasHarrer/Doing_Meta_Analysis_in_R/](Harrer et al. (2021)) for frequentist and Bayesian meta-analyses.
+
+To explore the potential moderating effect of bias measure (allocated Tajfel points, trait ratings, identification ratings), we additionally conduct a hierarchical model with measures clustered in subjects, conditions, and studies.
+
+## Load packages
+
+```{r setup}
+library(brms)
+library(bayestestR)
+library(metafor)
+library(knitr)
+library(logspline)
+library(reshape2)
+library(dplyr)
+library(nlme)
+```
+
+## Read in data
+
+```{r}
+nhbMeta <- read.csv('../../data/metadata_processed.csv')
+nhb1a <- read.csv('../../data/nhb1a_processed.csv')
+nhb1b <- read.csv('../../data/nhb1b_processed.csv')
+nhb2 <- read.csv('../../data/nhb2_processed.csv')
+nhb3 <- read.csv('../../data/nhb3_processed.csv')
+```
+
+## 3-Level Meta-Analysis
+
+### Effect size calculation
+
+```{r}
+meta1 <- nhbMeta[,1:5]
+meta1[, c("yi", "vi")] <- escalc(ri = meta1$cor_BiasIdeology, ni = meta1$N, measure = "ZCOR")
+```
+
+### Model fitting
+
+In the Bayesian model, our prior distributions are specified such that they resemble the default priors used in the other confirmatory analyses. The Normal(0,0.5) prior on the intercept indicates that the expected effect size (correlation) for the main effect (bias ~ ideology) is expected somewhere between -0.5 and 0.5. The Cauchy(0,0.2) prior on the standard deviation mimics the Normal(0,0.2) default prior on interaction effects (heterogeneity can be interpreted as an interaction between group and effect). We use a Cauchy instead of a Normal since Cauchy distributions are more common for variance parameters.  
+
+```{r}
+# Frequentist model
+
+freqMeta1 <- rma.mv(yi = meta1$yi, V = meta1$vi, random = list(~1 | study/group), 
+                    data = meta1, test = "t", method = "REML", 
+                    slab = paste0(meta1$study, "_", meta1$group))
+
+# Bayesian model
+
+# Define priors 
+metapriors <- c(prior(normal(0,0.5), class = Intercept),
+                prior(cauchy(0,0.2), class = sd))
+
+# Compute standard error
+meta1$seZ <- sqrt(meta1$vi) 
+bayesMeta1 <- brm(yi|se(seZ) ~ 1 + (1 | group) + (1 | study),
+                  data = meta1,
+                  prior = metapriors,
+                  sample_prior = TRUE,
+                  iter = 100000,
+                  chains = 4,
+                  seed = 987654,
+                  #silent = TRUE,
+                  #refresh = 0,
+                  warmup = 5000,
+                  #save_pars = save_pars(group = FALSE),
+                  control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                  file = "./model-fits/Meta/bayesMeta1")
+
+```
+
+### Model summary
+
+```{r}
+summary(freqMeta1)
+summary(bayesMeta1)
+```
+
+### Summary of estimated meta-analytic effect size
+
+```{r}
+est <- data.frame("Framework" = NA,
+                  "Estimate" = NA,
+                  "CI_lower95" = NA,
+                  "CI_upper95" = NA,
+                  "CI_lower90" = NA,
+                  "CI_upper90" = NA)
+
+# Compute confidence and credible intervals
+confint95 <- confint(freqMeta1, fixed = TRUE, level = .95)
+confint90 <- confint(freqMeta1, fixed = TRUE, level = .90)
+credint95 <- fixef(bayesMeta1, probs = c(.025, .975))
+credint90 <- fixef(bayesMeta1, probs = c(.05, .95))
+
+est[1,] <- c("Frequentist",
+             round(confint95$fixed[1,1:3], 2),
+             round(confint90$fixed[1,2:3], 2))
+
+est[2,] <- c("Bayesian",
+             round(credint95[1,c(1,3,4)], 2),
+             round(credint90[1,c(3,4)], 2))
+
+est
+
+```
+
+### Summary of heterogeneity estimates
+
+Heterogeneity estimates are expressed as standard deviations.
+
+```{r}
+hetStudy <- data.frame("Framework" = NA,
+                       "Estimate" = NA,
+                      "CI_lower95" = NA,
+                      "CI_upper95" = NA,
+                      "CI_lower90" = NA,
+                      "CI_upper90" = NA)
+hetGroup <- hetStudy
+
+# Compute confidence and credible intervals for between-study and between-group heterogeneity
+confint95 <- confint(freqMeta1, fixed = FALSE, level = .95)
+confint90 <- confint(freqMeta1, fixed = FALSE, level = .90)
+hetGroupBayes <- as_draws_array(bayesMeta1, "sd_group__Intercept")
+hetStudyBayes <- as_draws_array(bayesMeta1, "sd_study__Intercept")
+
+# Between-Study heterogeneity
+hetStudy[1,] <- c("Frequentist",
+                  round(confint95[[1]]$random[2,], 2),
+                  round(confint90[[1]]$random[2,2:3], 2))
+hetStudy[2,] <- c("Bayes",
+                  round(mean(hetStudyBayes), 2),
+                  round(quantile(hetStudyBayes, probs = c(0.025, 0.975, 0.05, 0.95)), 2))
+
+# Between-Group heterogeneity
+hetGroup[1,] <- c("Frequentist",
+                  round(confint95[[2]]$random[2,], 2),
+                  round(confint90[[2]]$random[2,2:3], 2))
+hetGroup[2,] <- c("Bayes",
+                  round(mean(hetGroupBayes), 2),
+                  round(quantile(hetGroupBayes, probs = c(0.025, 0.975, 0.05, 0.95)), 2))
+
+kable(hetStudy, caption = "Between-Study Heterogeneity")
+kable(hetGroup, caption = "Between-Group Heterogeneity")
+```
+
+
+### Hypothesis testing of the meta-analytic effect size and heterogeneity
+
+Bayesian tests for heterogeneity are Savage-Dickey density ratios testing whether the within-group SD is zero. We preregistered to run Q-tests as frequentist tests of heterogeneity, but for a multilevel meta-analysis, the Q-test is not a good test [https://bookdown.org/MathiasHarrer/Doing_Meta_Analysis_in_R/](cf. Harrer et al. (2021)). We therefore first test whether the third level explains additional variance using a likelihood ratio test between a 2-level (random effects for group) and a 3-level (random effects for group and study) meta-analysis, then we evaluate the Q-test within the 2-level meta-analysis. 
+
+```{r}
+# Set up results object
+testres <- data.frame("Estimate" = c("Fisher z", "Between-Study Heterogeneity", "Between-Group Heterogeneity"),
+                      "p value" = rep(NA, 3),
+                      "Bayes factor" = rep(NA, 3))
+
+# Compute frequentist model comparison
+freqMeta0 <- rma.mv(yi = meta1$yi, V = meta1$vi, random = list(~1 | group), 
+                    data = meta1, test = "t", method = "REML", 
+                    slab = paste0(meta1$study, "_", meta1$group))
+freqModelComp <- anova(freqMeta1, freqMeta0)
+
+# Extract p-values
+testres[1,2] <- round(freqMeta1$pval, 3)
+testres[2,2] <- round(freqModelComp$pval, 3)
+testres[3,2] <- round(freqMeta1$QEp, 3)
+
+# Compute Bayes factors
+bf10_effect <- dlogspline(0, logspline(as_draws_array(bayesMeta1, "prior_Intercept")))/dlogspline(0, logspline(as_draws_array(bayesMeta1, "b_Intercept")))
+bf01_het <- hypothesis(bayesMeta1, c("study__Intercept = 0", "group__Intercept = 0"), class = "sd")
+
+testres[1,3] <- bf10_effect
+testres[2:3,3] <- 1/bf01_het$hypothesis$Evid.Ratio
+
+kable(testres)
+```
+
+
+
+## Multi-level Model
+
+### Prepare data (Combine data from all studies)
+
+```{r}
+# Add study (and condition) identifier
+nhb1a$study <- "Study 1a"
+nhb1a$condition <- "Prolific"
+nhb1b$study <- "Study 1b"
+nhb1b$condition <- "MTurk"
+nhb2$study <- "Study 2"
+nhb3$study <- "Study 3"
+
+# Combine datasets
+nhbColumns <- c("X",
+                "study",
+                "condition",
+                "composite_political_orientation_z",
+                "composite_political_orientation",
+                "z_total_ingroup_minus_outgroup_points",
+                "z_ingroup_minus_outgroup_identify",
+                "z_ingroup_minus_outgroup_traits_positive")
+
+nhb <- rbind(nhb1a[, nhbColumns],
+             nhb1b[, nhbColumns],
+             nhb2[, nhbColumns],
+             nhb3[, nhbColumns])
+nhb$subject <- paste0(nhb$X, nhb$study)
+
+# Remove participants with missing values on trait variable
+nhb <- nhb[-which(is.na(nhb$z_ingroup_minus_outgroup_traits_positive)), ]
+
+# Convert from wide to long format
+nhbLong <- melt(nhb, id.vars = c("subject", "study", "condition", "composite_political_orientation_z"),
+                measure.vars = c("z_total_ingroup_minus_outgroup_points", "z_ingroup_minus_outgroup_identify", "z_ingroup_minus_outgroup_traits_positive"), value.name = "Bias", variable.name = "measure")
+```
+
+### Model fitting
+
+```{r}
+# Frequentist
+freqMultiLevel <- lme(Bias ~ composite_political_orientation_z * measure,
+                      random= list(subject = ~ 1,
+                                   condition = pdDiag(~ composite_political_orientation_z),
+                                   study = pdDiag(~ composite_political_orientation_z)),
+                      data = nhbLong,
+                      method = "REML",
+                      na.action = na.omit)
+
+# Bayesian
+
+defaultpriors <- c(
+  set_prior("normal(0, 0.5)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0, 0.5)", class = "b", coef="measurez_ingroup_minus_outgroup_identify"),
+  set_prior("normal(0, 0.5)", class = "b", coef="measurez_ingroup_minus_outgroup_traits_positive"),
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:measurez_ingroup_minus_outgroup_identify"),
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:measurez_ingroup_minus_outgroup_traits_positive")
+  )
+
+bayesMultiLevel <- brm(Bias ~ composite_political_orientation_z * measure + (1 | subject) + (composite_political_orientation_z || condition) + (composite_political_orientation_z || study),
+                       data = nhbLong,
+                       prior = defaultpriors,
+                       sample_prior = TRUE,
+                       iter = 10000,
+                       chains = 4,
+                       seed = 987654,
+                       #silent = TRUE,
+                       #refresh = 0,
+                       warmup = 1000,
+                       save_pars = save_pars(group = FALSE),
+                       control = list(adapt_delta = 0.999, stepsize = 0.001, max_treedepth = 20),
+                       file = "./model-fits/Meta/bayesMultiLevel")
+
+```
+
+### Model summaries
+
+```{r}
+summary(freqMultiLevel)
+summary(bayesMultiLevel)
+```
+
+### Testing the fixed effects of ideology and ideology x measure
+
+Frequentist testing quantities
+
+```{r}
+est <- data.frame("Parameter" = c("Ideology", "Ideology x Measure GroupIdentification", "Ideology x Measure GroupTraits"),
+                  "Estimate" = NA,
+                  "CI_lower95" = NA,
+                  "CI_upper95" = NA,
+                  "CI_lower90" = NA,
+                  "CI_upper90" = NA,
+                  "p_value" = NA)
+
+est$Estimate <- fixef(freqMultiLevel)[c(2,5,6)]
+est[,c(3,4)] <- intervals(freqMultiLevel, which = "fixed")$fixed[c(2,5,6), c(1,3)]
+est[,c(5,6)] <- intervals(freqMultiLevel, which = "fixed", level = .90)$fixed[c(2,5,6), c(1,3)]
+est[,7] <- summary(freqMultiLevel)$tTable[c(2,5,6), "p-value"]
+
+kable(est)
+```
+
+Bayesian testing quantities
+
+```{r}
+est <- data.frame("Parameter" = c("Ideology", "Ideology x Measure GroupIdentification", "Ideology x Measure GroupTraits"),
+                  "Estimate" = NA,
+                  "CI_lower95" = NA,
+                  "CI_upper95" = NA,
+                  "CI_lower90" = NA,
+                  "CI_upper90" = NA,
+                  "BF10" = NA)
+
+est[, c(2,3,4)] <- fixef(bayesMultiLevel)[c(2,5,6), c(1,3,4)]
+est[, c(5,6)] <- fixef(bayesMultiLevel, probs = c(.05, .95))[c(2,5,6), c(3,4)]
+est[, 7] <- 1/hypothesis(bayesMultiLevel, 
+                       c("composite_political_orientation_z = 0", 
+                         "composite_political_orientation_z:measurez_ingroup_minus_outgroup_identify = 0",
+                         "composite_political_orientation_z:measurez_ingroup_minus_outgroup_traits_positive = 0")
+                       )$hypothesis$Evid.Ratio
+
+kable(est)
+
+```
+

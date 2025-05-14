@@ -1,0 +1,99 @@
+---
+title: "Meta-Analysis Plot"
+author: "Angelika Stefan"
+date: "2025-05-14"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(ggplot2)
+library(brms)
+library(ggdist)
+library(tidybayes)
+library(dplyr)
+library(stringr)
+```
+
+## Read in model file
+
+```{r}
+meta_results <- readRDS('./model-fits/Meta/bayesMeta1.rds')
+```
+
+## Prepare data
+
+```{r}
+conditioneffects <- spread_draws(meta_results, r_group[group, term], b_Intercept)
+conditioneffects$b_Intercept <- conditioneffects$r_group + conditioneffects$b_Intercept
+colnames(conditioneffects)[1] <- "study"
+```
+
+```{r}
+studyeffects <- spread_draws(meta_results, r_study[study, term], b_Intercept)
+studyeffects$b_Intercept <- studyeffects$r_study + studyeffects$b_Intercept
+```
+
+
+```{r}
+fixedeffect <- spread_draws(meta_results, b_Intercept)
+fixedeffect$study <- "Average"
+```
+
+
+```{r}
+studyeffects <- rbind(conditioneffects, studyeffects, fixedeffect)
+studyeffects <- ungroup(studyeffects)
+
+studyeffects$code <- dplyr::case_match(studyeffects$study,
+                                       "Prolific" ~ "1a_C",
+                                       "1a" ~ "1a_S",
+                                       "MTurk" ~ "1b_C", 
+                                       "1b" ~ "1b_S",
+                                       c("random", "attitude", "volitional") ~ "2_C",
+                                       "2" ~ "2_S",
+                                       c("competitive","cooperative", "no_interaction") ~ "3_C",
+                                       "3" ~ "3_S",
+                                       "Average" ~ "all")
+studyeffects$study <- factor(studyeffects$study, 
+                             levels = rev(c("Prolific", "1a", "MTurk", "1b", "random", "attitude", "volitional", "2", "no_interaction", "competitive", "cooperative", "3", "Average")),
+                             labels = rev(c("Prolific", "Effect Study 1a", "MTurk", "Effect Study 1b", "Condition: Random", "Condition: Attitude", "Conditon: Volitional", "Effect Study 2", "Condition: No Interaction", "Condition: Competitive", "Condition: Cooperative", "Effect Study 3", "Global Effect")))
+```
+
+
+```{r}
+summaryStatsStudy <- studyeffects %>% group_by(study) %>% mean_qi(b_Intercept) %>% mutate_if(is.numeric, round, 2)
+summaryStatsStudy <- summaryStatsStudy[13:1,]
+```
+
+## Plot
+
+```{r}
+p <- ggplot(studyeffects, aes(x = b_Intercept, y = study, fill = code)) +
+  geom_vline(xintercept = 0, linewidth = 0.25, lty = 2) +
+  stat_halfeye(.width = c(.9, .95)) +
+  scale_fill_manual(values = c("#9DCEE9", "#56B4E9", "#98E4CF", "#009E73", "#F6B989", "#D55E00", "#F4B7DA", "#CC79A7", "#6F6E6E"),
+                    labels = c("Study 1a", "", "Study 1b", "", "Study 2", "", "Study 3", "", "Combined"))
+p + 
+  theme_minimal() +
+  labs(
+    x = "\nIdeological Asymmetry Effect (Fisher's z)",
+    y = "",
+    fill = ""
+  ) +
+  theme(text=element_text(size=20),
+        legend.position = "none") + 
+  xlim(-0.3, 0.75) +
+  geom_text(
+    data = summaryStatsStudy,
+    aes(label = str_glue("{b_Intercept} [{.lower}, {.upper}]"), x = 0.75, y=study),
+    hjust = "inward", inherit.aes = FALSE, vjust=-1
+  )
+
+
+ggsave("./model-fits/nhbMeta_minimeta-forest.pdf", device = "pdf", width=9.697917, height=6.666667)
+ggsave("./model-fits/nhbMeta_minimeta-forest.jpg", device = "jpeg", width=9.697917, height=6.666667)
+```
+
+

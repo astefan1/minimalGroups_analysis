@@ -1,0 +1,93 @@
+---
+title: "Reliability Analyses NHB3"
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(Bayesrel)
+library(knitr)
+```
+
+## Read in data
+
+```{r}
+nhb3 <- read.csv('../../data/nhb3_processed.csv')
+```
+
+## Compute scale reliability scores
+
+The main confirmatory hypotheses that are tested in the first study involve the two scales:
+
+* Composite political orientation
+* Mean intergroup bias
+
+__Composite political orientation__
+
+The composite political orientation scale is computed as the average of the social and economic conservativeness scale (SEC) as well as three items measuring economic, social, and political orientation. We compute Cronbach's alpha for the SEC and the composite political orientation scale in the frequentist and Bayesian paradigm.
+
+```{r}
+# SEC reliability
+strel(nhb3[,c("RC_SECS_1", paste0("SECS_", 2:4), "RC_SECS_5", paste0("SECS_", 6:12))], estimates = "alpha")
+
+# Composite political orientation scale
+strel(nhb3[, c("z_mean_SECS", "z_EconOrient", "z_SocOrient", "z_PolOrient")], estimates = "alpha")
+```
+
+Both scales show excellent internal consistency.
+
+### Mean intergroup bias
+
+The mean intergroup bias scale is composed of three variables:
+
+* The difference in ingroup and outgroup evaluative trait ratings (each in itself a rating scale with 6 items)
+* The difference in points allocated to ingroup and outgroup in the Tajfel matrices
+* The difference in ingroup and outgroup identification
+
+We compute Cronbach's alpha for the trait rating scales and the intergroup bias scale in the frequentist and Bayesian paradigm.
+
+```{r}
+# Ingroup Evaluative Traits
+strel(nhb3[, c("RC_InTraits_1","InTraits_2","InTraits_3", "RC_InTraits_4","InTraits_5","RC_InTraits_6")], estimates = "alpha")
+
+# Outgroup Evaluative Traits
+strel(nhb3[, c("RC_OutTraits_1","OutTraits_2","OutTraits_3", "RC_OutTraits_4","OutTraits_5","RC_OutTraits_6")], estimates = "alpha")
+```
+
+Both the ingroup and outgroup evaluative trait measure have good internal consistency.
+
+```{r}
+# Mean intergroup bias
+strel(nhb3[, c("z_total_ingroup_minus_outgroup_points", "z_ingroup_minus_outgroup_traits_positive", "z_ingroup_minus_outgroup_identify")], estimates = "alpha")
+```
+
+Same as in Study 1, the mean intergroup bias measure has inadequate internal consistency ($\alpha$ << .70). We will therefore compute all analyses with the three variables separately as exploratory analyses.
+
+Below is a correlation table that shows the correlations between the items:
+
+```{r}
+kable(data.frame(cor(nhb3[, c("z_total_ingroup_minus_outgroup_points", 
+                   "z_ingroup_minus_outgroup_traits_positive", 
+                   "z_ingroup_minus_outgroup_identify")], use = "pairwise"), 
+                 row.names = c("Points", "Traits", "Identification")), 
+      digits = 3, 
+      col.names = c("Points", "Traits", "Identification"),
+      caption = "Prolific Sample")
+```
+
+And a correlation plot showing that a lack of variability in the variables is not the reason for the low correlations and that there are no discernable non-linear bivariate patterns in the data.
+
+```{r}
+plot(nhb3[, c("z_total_ingroup_minus_outgroup_points", 
+               "z_ingroup_minus_outgroup_traits_positive", 
+               "z_ingroup_minus_outgroup_identify")], pch=19)
+```
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```

@@ -1,0 +1,1271 @@
+---
+title: "mingroups_2_preprocessing"
+author: "Youssef Amin"
+date: "2024-05-01"
+output: html_document
+---
+Load necessary packages
+```{r setup, include=FALSE}
+library(ggplot2)
+library(car)
+library(dplyr)
+library(sjPlot)
+library(haven)
+library(tidyverse)
+library(psych)
+library(lme4)
+library(magrittr)
+library(BayesFactor)
+library(bayestestR)
+```
+
+Set working directory to the location of the current file.
+```{r}
+#setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+```
+
+Turn off scientific notation.
+```{r}
+options(scipen = 999)
+```
+
+# note on the data: 
+# for the condition variable, 0 = underestimator; 1 = overestimator
+
+Read in datasets and remove test (non-prolific) runs
+```{r}
+groups2 <- read.csv('/Users/youssefamin/Dropbox/MinimalGroup_NHB_Master/MinimalGroup_NHB2/data/nhb2_raw_data.csv')
+groups1 <- read.csv('/Users/youssefamin/Dropbox/MinimalGroup_NHB_Master/MinimalGroup_NHB1/data/nhb1_bothsamples_processed.csv')
+
+#Remove any repeat Prolific PID, IP addresses from earlier studies
+##Prolific IDs
+duplicate_pids <- intersect(groups1$PROLIFIC_PID, groups2$PROLIFIC_PID)
+
+# Remove rows from groups2 with duplicate PROLIFIC_PID
+groups2 <- groups2[!groups2$PROLIFIC_PID %in% duplicate_pids, ]
+
+##IP Addresses
+duplicate_ips <- intersect(groups1$IPAddress, groups2$IPAddress)
+
+# Remove rows from groups2 with duplicate IPAddress
+groups2 <- groups2[!groups2$IPAddress %in% duplicate_ips, ] #5 repeat IP addresses from study 1 957 -> 952
+
+#Remove any repeat IP addresses within study 2
+# Convert StartData to datetime format if it is not already
+groups2$StartDate <- as.POSIXct(groups2$StartDate, format="%Y-%m-%d %H:%M:%S") 
+
+# Sort data by IP address and StartData
+groups2 <- groups2[order(groups2$IPAddress, groups2$StartDate), ]
+
+# Identify duplicates based on IP address and keep only the first occurrence
+groups2 <- groups2[!duplicated(groups2$IPAddress), ] #7 repeat IP addresses within this study 952 -> 945
+
+
+###Remove non-prolific/test runs
+groups2 %<>% filter(PROLIFIC_PID != "")
+totalsamplesize <- nrow(groups2)
+
+###Remove participants that didn't finish
+groups2<-groups2 %>% filter(Finished == "True" ) #945 -> 943
+finishedsamplesize <- nrow(groups2)
+```
+
+Attention Checks
+```{r}
+# filter out participants who answered the attention check question incorrectly. 
+groups2 <- groups2 %>%
+  filter(skyColor == 'purple') #before: 943 , after: 928
+samplesize_skyAttention <- nrow(groups2) #15 removed for sky attention check
+
+
+# check whether people accurately assigned themselves to groups.
+
+#Remove RANK columns, same info is contained in GROUP columns
+groups2 %<>% dplyr::select(-c(AttCheckOrder1_0_1_RANK, 
+                       AttCheckOrder1_1_1_RANK,
+                       AttnCheckOrder2_0_1_RANK, 
+                       AttnCheckOrder2_1_1_RANK))
+
+
+# create variable which shows which people did which attention check
+groups2 <- groups2 %>%
+  mutate(Check1 = case_when(
+    (nzchar(AttCheckOrder1_0_GROUP) | nzchar(AttCheckOrder1_1_GROUP)) ~ TRUE,
+    TRUE ~ FALSE  # Default case to assign FALSE
+  ))
+
+groups2 <- groups2 %>%
+  mutate(Check2 = case_when(
+    (nzchar(AttnCheckOrder2_0_GROUP) | nzchar(AttnCheckOrder2_1_GROUP)) ~ TRUE,
+    TRUE ~ FALSE  # Default case to assign FALSE
+  ))
+
+
+#note on the data, for attention check 1, find what attention check people did (1 or 2)
+#For attention check 1, 0 was blue and 1 was green
+#For attention check 2, 0 was green and blue was 1
+##Rennaming columns to make code more intuitive
+groups2 %<>%
+  rename(Check1_ChoseBlue=AttCheckOrder1_0_GROUP, 
+       Check1_ChoseGreen=AttCheckOrder1_1_GROUP,
+       Check2_ChoseGreen = AttnCheckOrder2_0_GROUP,
+       Check2_ChoseBlue = AttnCheckOrder2_1_GROUP)
+
+
+#Create assignment check column
+groups2 <- groups2 %>%
+  mutate(
+    # Transform these columns to TRUE if they contain data, otherwise FALSE
+    Check1_ChoseBlue = nzchar(Check1_ChoseBlue),
+    Check2_ChoseBlue = nzchar(Check2_ChoseBlue),
+    Check1_ChoseGreen = nzchar(Check1_ChoseGreen),
+    Check2_ChoseGreen = nzchar(Check2_ChoseGreen)
+  ) %>%
+  mutate(
+    # Create 'AssignmentCheck' based on the new boolean columns
+    AssignmentCheck = case_when(
+      ingroup == 'blue' & (Check1_ChoseBlue | Check2_ChoseBlue) ~ TRUE,
+      ingroup == 'green' & (Check1_ChoseGreen | Check2_ChoseGreen) ~ TRUE,
+      TRUE ~ FALSE  # Default to FALSE if none of the conditions are met
+    )
+  )
+
+
+##Remove those who assigned themselves to the wrong group
+groups2 %<>% filter(AssignmentCheck == TRUE) #before 928 #after: 913
+processed_samplesize <- nrow(groups2) #15 removed in assignment check
+```
+
+
+Cleaning up demographic data
+```{r}
+####Age####
+describe(as.numeric(groups2$dem_Age)) #AGE: M = 45.28 ,  SD = 15.27 ; 
+is.na(as.numeric(groups2$dem_Age)) %>% sum() #How many people didn't respond, none
+(as.numeric(groups2$dem_Age) < 18 )%>% sum(na.rm=T) #How many people said they were under 18, none
+groups2 %<>% filter(as.numeric(dem_Age) >= 18)##Remove people who left age blank or who reported they were under 18, none
+
+
+####Gender####
+table(groups2$dem_Sex) #so many different responses that I added them up myself, as there is no way to soft code this, there will always be varying type-ins
+sum(1, 1, 14, 249, 13, 2, 173, 1, 4, 1, 1, 3, 3, 1, 1) + #468 Cis Women/Female
+sum(1, 1, 3, 5, 2, 228, 192, 3) + #435 Male
+sum(1,3) + #4 Non-binary
+sum(1,1,1,1,2) #6 Other
+
+####Education####
+table(groups2$dem_Education)
+groups2$dem_Education.n<-dplyr::recode(groups2$dem_Education,
+                                       "2-year College Degree" = 4,
+                                       "4-year College Degree" = 5,
+                                       "Doctoral Degree" = 7,
+                                       "High School / GED" = 2,
+                                       "Less than High School" = 1,
+                                       "Masters Degree" = 6,
+                                       "Professional Degree (JD, MD)" = 7,
+                                       "Some College" = 3)
+# Reorder Education levels
+groups2$dem_Education <- factor(groups2$dem_Education, 
+                                 levels = c("Less than High School", "High School / GED", "Some College", 
+                                            "2-year College Degree", "4-year College Degree", 
+                                            "Masters Degree", "Professional Degree (JD, MD)", 
+                                            "Doctoral Degree"))
+
+median(groups2$dem_Education.n, na.rm = T) #5, half of our participants had a four year college degree or higher
+
+
+
+####Income####
+table(groups2$dem_Income)
+groups2$dem_Income.n<-dplyr::recode(groups2$dem_Income,
+                                       "Less than $30,000" = 1,
+                                       "$30,000 – $39,999" = 2,
+                                       "$40,000 – $49,999" = 3,
+                                       "$50,000 – $59,999" = 4,
+                                       "$60,000 – $69,999" = 5,
+                                       "$70,000 – $79,999" = 6,
+                                       "$80,000 – $89,999" = 7,
+                                       "$90,000 – $99,999" = 8,
+                                       "$100,000 or more" = 9,
+                                       .default = NA_real_)
+
+median(groups2$dem_Income.n, na.rm = T) #Median income of 70,000 - 79,999
+
+groups2$dem_BasicRace <- dplyr::recode(groups2$dem_Race,
+              "White" = "White",
+              "Asian" = "Asian",
+              "Black or African American" = "Black",
+              "American Indian or Alaskan Native" = "American Indian or Alaskan Native",
+              "Native Hawaiian or Other Pacific Islander" = "Native Hawaiian or Other Pacific Islander",
+              .default = "Other or Mixed")
+
+
+#use this code to see who reported no age: which(groups2$dem_Age == "")
+```
+
+
+###############################,
+###############################,
+# CALCULATE POLITICAL IDEOLOGY // EXTREMITY
+###############################,
+###############################,
+
+```{r}
+###############,
+##  SECS Scale
+###############,
+
+#Replace any missing SEC values with 50
+groups2$SECS_1<-case_when(groups2$SECS_1 == "" ~ '50',
+                          TRUE ~ as.character(groups2$SECS_1))
+groups2$SECS_2<-case_when(groups2$SECS_2 == "" ~ '50',
+                          TRUE ~ as.character(groups2$SECS_2))
+groups2$SECS_3<-case_when(groups2$SECS_3 == "" ~ '50',
+                          TRUE ~ as.character(groups2$SECS_3))
+groups2$SECS_4<-case_when(groups2$SECS_4 == "" ~ '50',
+                          TRUE ~ as.character(groups2$SECS_4))
+groups2$SECS_5<-case_when(groups2$SECS_5 == "" ~ '50',
+                          TRUE ~ as.character(groups2$SECS_5))
+groups2$SECS_6<-case_when(groups2$SECS_6 == "" ~ '50',
+                          TRUE ~ as.character(groups2$SECS_6))
+groups2$SECS_7<-case_when(groups2$SECS_7 == "" ~ '50',
+                          TRUE ~ as.character(groups2$SECS_7))
+groups2$SECS_8<-case_when(groups2$SECS_8 == "" ~ '50',
+                          TRUE ~ as.character(groups2$SECS_8))
+groups2$SECS_9<-case_when(groups2$SECS_9 == "" ~ '50',
+                          TRUE ~ as.character(groups2$SECS_9))
+groups2$SECS_10<-case_when(groups2$SECS_10 == "" ~ '50',
+                          TRUE ~ as.character(groups2$SECS_10))
+
+# recode the SECS items so that higher scores = more conservative. 
+groups2 <- groups2 %>%
+  mutate(RC_SECS_1 = 100 - as.numeric(SECS_1),
+         RC_SECS_5 = 100 - as.numeric(SECS_5))
+
+
+# calculate mean SECs Scores. 
+groups2 <- groups2 %>%
+  rowwise() %>%
+  mutate(mean_SECS = mean(c(RC_SECS_1,as.numeric(SECS_2),as.numeric(SECS_3),
+                            as.numeric(SECS_4),as.numeric(RC_SECS_5),as.numeric(SECS_6),
+                            as.numeric(SECS_7),as.numeric(SECS_8),as.numeric(SECS_9),
+                            as.numeric(SECS_10),as.numeric(SECS_11),as.numeric(SECS_12), na.rm = T))) %>%
+  ungroup()
+
+#scaled to 1-9
+groups2$SECS_scaled<-((groups2$mean_SECS-min(groups2$mean_SECS,na.rm=T))*(9-1)/(max(groups2$mean_SECS,na.rm=T)-min(groups2$mean_SECS,na.rm = T)))+1
+
+###############,
+##  CREATE COMPOSITE MEASURE
+###############,
+groups2$EconOrient<-case_when(groups2$EconOrient=='Extremely Liberal\n1\n' ~ 1,
+          groups2$EconOrient=="2" ~ 2,
+          groups2$EconOrient=='3'~3,
+          groups2$EconOrient=='4'~4,
+          groups2$EconOrient=="Moderate\n5\n" ~ 5,
+          groups2$EconOrient=="6" ~ 6,
+          groups2$EconOrient=="7"~7,
+          groups2$EconOrient=="8"~8,
+          groups2$EconOrient=="Extremely Conservative\n9\n" ~ 9,
+          groups2$EconOrient==''~NA_real_)
+
+#Make SocOrient Numeric
+groups2$SocOrient<-case_when(groups2$SocOrient=='Extremely Liberal\n1\n' ~ 1,
+                              groups2$SocOrient=="2" ~ 2,
+                              groups2$SocOrient=='3'~3,
+                              groups2$SocOrient=='4'~4,
+                              groups2$SocOrient=="Moderate\n5\n" ~ 5,
+                              groups2$SocOrient=="6" ~ 6,
+                              groups2$SocOrient=="7"~7,
+                              groups2$SocOrient=="8"~8,
+                              groups2$SocOrient=="Extremely Conservative\n9\n" ~ 9,
+                              groups2$SocOrient==''~NA_real_)
+
+#Make PolOrient Numeric
+groups2$PolOrient<-case_when(groups2$PolOrient=='Extremely Liberal\n1\n' ~ 1,
+                             groups2$PolOrient=="2" ~ 2,
+                             groups2$PolOrient=='3'~3,
+                             groups2$PolOrient=='4'~4,
+                             groups2$PolOrient=="Moderate\n5\n" ~ 5,
+                             groups2$PolOrient=="6" ~ 6,
+                             groups2$PolOrient=="7"~7,
+                             groups2$PolOrient=="8"~8,
+                             groups2$PolOrient=="Extremely Conservative\n9\n" ~ 9,
+                             groups2$PolOrient==''~NA_real_)
+
+# standardize the four political orientation variables
+groups2 <- groups2 %>%
+  mutate(z_mean_SECS = scale(mean_SECS),
+         z_PolOrient = scale(PolOrient),
+         z_EconOrient = scale(EconOrient),
+         z_SocOrient = scale(SocOrient))
+
+# create standardized political orientation variable. 
+groups2 <- groups2 %>%
+  rowwise() %>%
+  mutate(composite_political_orientation = mean(c(z_mean_SECS, z_PolOrient,z_EconOrient,z_SocOrient), na.rm = T),
+         self_identification_political = mean(c(z_PolOrient,z_EconOrient,z_SocOrient), na.rm = T)) %>%
+  ungroup() %>% 
+  mutate(composite_political_orientation_z = scale(composite_political_orientation),
+         self_identification_political_z = scale(self_identification_political))
+
+
+#raw political orientation
+groups2 <- groups2 %>%
+  rowwise() %>%
+  mutate(composite_political_orientation.raw = mean(c(SECS_scaled, PolOrient,EconOrient,SocOrient), na.rm = T)) %>%
+  ungroup() #scaled 1-9
+
+
+###############################,
+###############################,
+# CALCULATE IDEOLOGICAL EXTREMITY
+###############################,
+###############################,
+
+# calculate ideological extremity by recoding to look at the distance from the participant's  
+# score to the midpoint of the scale.
+groups2 <- groups2 %>%
+  mutate(PolOrientExtremity = abs(5 - PolOrient),
+         SocOrientExtremity = abs(5 - SocOrient),
+         EconOrientExtremity = abs(5 - EconOrient),
+         SECSExtremity = abs(5 - SECS_scaled))
+
+# standardize extremity variables.
+groups2 <- groups2 %>%
+  mutate(z_PolOrientExtremity = scale(PolOrientExtremity),
+         z_SocOrientExtremity = scale(SocOrientExtremity),
+         z_EconOrientExtremity = scale(EconOrientExtremity),
+         z_SECSExtremity = scale(SECSExtremity)) %>%
+  ungroup()
+
+# calculate mean ideological extremity
+groups2 <- groups2 %>%
+  rowwise() %>%
+  mutate(composite_ideological_extremity = mean(c(z_PolOrientExtremity,z_SocOrientExtremity, z_EconOrientExtremity,z_SECSExtremity), na.rm = T),
+         selfIDExtremity = mean(c(z_PolOrientExtremity,z_SocOrientExtremity, z_EconOrientExtremity))) %>%
+  ungroup() %>% 
+  mutate(composite_ideological_extremity_z = scale(composite_ideological_extremity),
+         selfIDExtremity_z = scale(selfIDExtremity))
+
+
+#raw
+groups2 <- groups2 %>%
+  rowwise() %>%
+  mutate(composite_ideological_extremity.raw = mean(c(PolOrientExtremity,SocOrientExtremity,EconOrientExtremity,SECSExtremity), na.rm = T)) %>%
+  ungroup()
+```
+
+
+
+##########################################,
+##########################################,
+##  CALCULATE DEPENDENT VARIABLES ########
+##########################################,
+##########################################,
+```{r}
+#########################,
+# IDENTIFICATION MEASURES
+#########################,
+
+##Making Ingroup Identification Numeric
+groups2$IngroupIdentify<-case_when(
+  groups2$IngroupIdentify == "Strongly Disagree\n1\n" ~ 1,
+  groups2$IngroupIdentify == "2" ~ 2,
+  groups2$IngroupIdentify == "3" ~ 3,
+  groups2$IngroupIdentify == "4" ~ 4,
+  groups2$IngroupIdentify == "5" ~ 5,
+  groups2$IngroupIdentify == "6" ~ 6,
+  groups2$IngroupIdentify == "Strongly Agree\n7\n" ~ 7
+)
+
+##Making Outgroup Identification Numeric
+groups2$OutgroupIdentify<-case_when(
+  groups2$OutgroupIdentify == "Strongly Disagree\n1\n" ~ 1,
+  groups2$OutgroupIdentify == "2" ~ 2,
+  groups2$OutgroupIdentify == "3" ~ 3,
+  groups2$OutgroupIdentify == "4" ~ 4,
+  groups2$OutgroupIdentify == "5" ~ 5,
+  groups2$OutgroupIdentify == "6" ~ 6,
+  groups2$OutgroupIdentify == "Strongly Agree\n7\n" ~ 7
+)
+
+#scale
+groups2$z_IngroupIdentify<-scale(groups2$IngroupIdentify)
+
+# calculate difference between ingroup and outgroup identification. 
+groups2 <- groups2 %>%
+  mutate(ingroup_minus_outgroup_identify = IngroupIdentify - OutgroupIdentify,
+         z_ingroup_minus_outgroup_identify = scale(ingroup_minus_outgroup_identify))
+
+
+#########################,
+# EVALUATIVE TRAIT RATINGS
+#########################,
+#Recoding the Ingroup Trait Evaluation to Numeric
+groups2$InTraits_1<-dplyr::recode(groups2$InTraits_1, 
+                        "Not at all\n1\n" = 1,
+                        "2" = 2,
+                        "3" = 3,
+                        "4" = 4,
+                        "5" = 5,
+                        "6" = 6,
+                        "Very much\n7\n" = 7)
+groups2$InTraits_2<-dplyr::recode(groups2$InTraits_2, 
+                        "Not at all\n1\n" = 1,
+                        "2" = 2,
+                        "3" = 3,
+                        "4" = 4,
+                        "5" = 5,
+                        "6" = 6,
+                        "Very much\n7\n" = 7)
+groups2$InTraits_3<-dplyr::recode(groups2$InTraits_3, 
+                        "Not at all\n1\n" = 1,
+                        "2" = 2,
+                        "3" = 3,
+                        "4" = 4,
+                        "5" = 5,
+                        "6" = 6,
+                        "Very much\n7\n" = 7)
+groups2$InTraits_4<-dplyr::recode(groups2$InTraits_4, 
+                        "Not at all\n1\n" = 1,
+                        "2" = 2,
+                        "3" = 3,
+                        "4" = 4,
+                        "5" = 5,
+                        "6" = 6,
+                        "Very much\n7\n" = 7)
+groups2$InTraits_5<-dplyr::recode(groups2$InTraits_5, 
+                        "Not at all\n1\n" = 1,
+                        "2" = 2,
+                        "3" = 3,
+                        "4" = 4,
+                        "5" = 5,
+                        "6" = 6,
+                        "Very much\n7\n" = 7)
+groups2$InTraits_6<-dplyr::recode(groups2$InTraits_6, 
+                        "Not at all\n1\n" = 1,
+                        "2" = 2,
+                        "3" = 3,
+                        "4" = 4,
+                        "5" = 5,
+                        "6" = 6,
+                        "Very much\n7\n" = 7)
+
+#Recoding the Outgroup Trait Evaluation to Numeric
+groups2$OutTraits_1<-dplyr::recode(groups2$OutTraits_1, 
+                         "Not at all\n1\n" = 1,
+                         "2" = 2,
+                         "3" = 3,
+                         "4" = 4,
+                         "5" = 5,
+                         "6" = 6,
+                         "Very much\n7" = 7)
+groups2$OutTraits_2<-dplyr::recode(groups2$OutTraits_2, 
+                         "Not at all\n1\n" = 1,
+                         "2" = 2,
+                         "3" = 3,
+                         "4" = 4,
+                         "5" = 5,
+                         "6" = 6,
+                         "Very much\n7" = 7)
+groups2$OutTraits_3<-dplyr::recode(groups2$OutTraits_3, 
+                         "Not at all\n1\n" = 1,
+                         "2" = 2,
+                         "3" = 3,
+                         "4" = 4,
+                         "5" = 5,
+                         "6" = 6,
+                         "Very much\n7" = 7)
+groups2$OutTraits_4<-dplyr::recode(groups2$OutTraits_4, 
+                         "Not at all\n1\n" = 1,
+                         "2" = 2,
+                         "3" = 3,
+                         "4" = 4,
+                         "5" = 5,
+                         "6" = 6,
+                         "Very much\n7" = 7)
+groups2$OutTraits_5<-dplyr::recode(groups2$OutTraits_5, 
+                         "Not at all\n1\n" = 1,
+                         "2" = 2,
+                         "3" = 3,
+                         "4" = 4,
+                         "5" = 5,
+                         "6" = 6,
+                         "Very much\n7" = 7)
+groups2$OutTraits_6<-dplyr::recode(groups2$OutTraits_6, 
+                         "Not at all\n1\n" = 1,
+                         "2" = 2,
+                         "3" = 3,
+                         "4" = 4,
+                         "5" = 5,
+                         "6" = 6,
+                         "Very much\n7" = 7)
+
+# recode negative trait ratings so that higher scores = more positive evaluations
+groups2 <- groups2 %>%
+  mutate(RC_InTraits_1 = 8 - InTraits_1,
+         RC_InTraits_4 = 8 - InTraits_4,
+         RC_InTraits_6 = 8 - InTraits_6,
+         RC_OutTraits_1 = 8 - OutTraits_1,
+         RC_OutTraits_4 = 8 - OutTraits_4,
+         RC_OutTraits_6 = 8 - OutTraits_6)
+
+# calculate mean evaluative trait ratings for ingroups and outgroups, such that higher scores = more positive evaluations. 
+groups2 <- groups2 %>%
+  rowwise() %>%
+  mutate(mean_ingroup_traits_positive = mean(c(RC_InTraits_1,InTraits_2,InTraits_3,
+                                               RC_InTraits_4,InTraits_5,RC_InTraits_6))) %>%
+  mutate(mean_outgroup_traits_positive = mean(c(RC_OutTraits_1,OutTraits_2,OutTraits_3,
+                                               RC_OutTraits_4,OutTraits_5,RC_OutTraits_6))) %>%
+  ungroup()
+
+# calculate the difference score between positivity of ingroup trait ratings and outgroups trait ratings.
+groups2 <- groups2 %>%
+  mutate(ingroup_minus_outgroup_traits_positive = mean_ingroup_traits_positive - mean_outgroup_traits_positive,
+         z_ingroup_minus_outgroup_traits_positive = scale(ingroup_minus_outgroup_traits_positive))
+
+
+
+#######################,
+### TAJFEL MATRICES
+#######################,
+
+# first recode the tajfel matrices to count up the number 
+# of points awarded to the ingroup and to the outgroup.
+
+# Matrix 1: FAV vs. MJP OPPOSED
+groups2 <- groups2 %>%
+  mutate(MatrixA_O_ingroup_points = case_when(
+    MatrixA_O == "A" ~ 19,
+    MatrixA_O == "B" ~ 18,
+    MatrixA_O == "C" ~ 17,
+    MatrixA_O == "D" ~ 16,
+    MatrixA_O == "E" ~ 15,
+    MatrixA_O == "F" ~ 14,
+    MatrixA_O == "G" ~ 13,
+    MatrixA_O == "H" ~ 12,
+    MatrixA_O == "I" ~ 11,
+    MatrixA_O == "J" ~ 10,
+    MatrixA_O == "K" ~ 9,
+    MatrixA_O == "L" ~ 8,
+    MatrixA_O == "M" ~ 7
+  )) %>%
+  mutate(MatrixA_O_outgroup_points = case_when(
+    MatrixA_O == "A" ~ 1,
+    MatrixA_O == "B" ~ 3,
+    MatrixA_O == "C" ~ 5,
+    MatrixA_O == "D" ~ 7,
+    MatrixA_O == "E" ~ 9,
+    MatrixA_O == "F" ~ 11,
+    MatrixA_O == "G" ~ 13,
+    MatrixA_O == "H" ~ 15,
+    MatrixA_O == "I" ~ 17,
+    MatrixA_O == "J" ~ 19,
+    MatrixA_O == "K" ~ 21,
+    MatrixA_O == "L" ~ 23,
+    MatrixA_O == "M"~ 25
+  ))
+
+# Matrix 2: FAV vs. MJP Together
+groups2 <- groups2 %>%
+  mutate(MatrixA_T_ingroup_points = case_when(
+    MatrixA_T == "A" ~ 25,
+    MatrixA_T == "B" ~ 23,
+    MatrixA_T == "C" ~ 21,
+    MatrixA_T == "D" ~ 19,
+    MatrixA_T == "E" ~ 17,
+    MatrixA_T == "F" ~ 15,
+    MatrixA_T == "G" ~ 13,
+    MatrixA_T == "H" ~ 11,
+    MatrixA_T == "I" ~ 9,
+    MatrixA_T == "J" ~ 7,
+    MatrixA_T == "K" ~ 5,
+    MatrixA_T == "L" ~ 3,
+    MatrixA_T == "M"~ 1
+  )) %>%
+  mutate(MatrixA_T_outgroup_points = case_when(
+    MatrixA_T == "A" ~ 7,
+    MatrixA_T == "B" ~ 8,
+    MatrixA_T == "C" ~ 9,
+    MatrixA_T == "D" ~ 10,
+    MatrixA_T == "E" ~ 11,
+    MatrixA_T == "F" ~ 12,
+    MatrixA_T == "G" ~ 13,
+    MatrixA_T == "H" ~ 14,
+    MatrixA_T == "I" ~ 15,
+    MatrixA_T == "J" ~ 16,
+    MatrixA_T == "K" ~ 17,
+    MatrixA_T == "L" ~ 18,
+    MatrixA_T == "M" ~ 19
+  ))
+
+
+# Matrix 3: MD vs. MIP+MJP opposed
+groups2 <- groups2 %>%
+  mutate(MatrixB_O_ingroup_points = case_when(
+    MatrixB_O == "A" ~ 19,
+    MatrixB_O == "B" ~ 18,
+    MatrixB_O == "C" ~ 17,
+    MatrixB_O == "D" ~ 16,
+    MatrixB_O == "E" ~ 15,
+    MatrixB_O == "F" ~ 14,
+    MatrixB_O == "G" ~ 13,
+    MatrixB_O == "H" ~ 12,
+    MatrixB_O == "I" ~ 11,
+    MatrixB_O == "J" ~ 10,
+    MatrixB_O == "K" ~ 9,
+    MatrixB_O == "L" ~ 8,
+    MatrixB_O == "M" ~ 7
+  )) %>%
+  mutate(MatrixB_O_outgroup_points = case_when(
+    MatrixB_O == "A" ~ 25,
+    MatrixB_O == "B" ~ 23,
+    MatrixB_O == "C" ~ 21,
+    MatrixB_O == "D" ~ 19,
+    MatrixB_O == "E" ~ 17,
+    MatrixB_O == "F" ~ 15,
+    MatrixB_O == "G" ~ 13,
+    MatrixB_O == "H" ~ 11,
+    MatrixB_O == "I" ~ 9,
+    MatrixB_O == "J" ~ 7,
+    MatrixB_O == "K" ~ 5,
+    MatrixB_O == "L" ~ 3,
+    MatrixB_O == "M" ~ 1
+  ))
+
+
+# Matrix 4: MD vs. MIP+MJP Together
+groups2 <- groups2 %>%
+  mutate(MatrixB_T_ingroup_points = case_when(
+    MatrixB_T == "A" ~ 1,
+    MatrixB_T == "B" ~ 3,
+    MatrixB_T == "C" ~ 5,
+    MatrixB_T == "D" ~ 7,
+    MatrixB_T == "E" ~ 9,
+    MatrixB_T == "F" ~ 11,
+    MatrixB_T == "G" ~ 13,
+    MatrixB_T == "H" ~ 15,
+    MatrixB_T == "I" ~ 17,
+    MatrixB_T == "J" ~ 19,
+    MatrixB_T == "K" ~ 21,
+    MatrixB_T == "L" ~ 23,
+    MatrixB_T == "M" ~ 25
+  )) %>%
+  mutate(MatrixB_T_outgroup_points = case_when(
+    MatrixB_T == "A" ~ 7,
+    MatrixB_T == "B" ~ 8,
+    MatrixB_T == "C" ~ 9,
+    MatrixB_T == "D" ~ 10,
+    MatrixB_T == "E" ~ 11,
+    MatrixB_T == "F" ~ 12,
+    MatrixB_T == "G" ~ 13,
+    MatrixB_T == "H" ~ 14,
+    MatrixB_T == "I" ~ 15,
+    MatrixB_T == "J" ~ 16,
+    MatrixB_T == "K" ~ 17,
+    MatrixB_T == "L" ~ 18,
+    MatrixB_T == "M" ~ 19
+  ))
+
+
+# Matrix 5: P Vs. FAV Opposed
+groups2 <- groups2 %>%
+  mutate(MatrixC_O_ingroup_points = case_when(
+    MatrixC_O == "A" ~ 16,
+    MatrixC_O == "B" ~ 17,
+    MatrixC_O == "C" ~ 18,
+    MatrixC_O == "D" ~ 19,
+    MatrixC_O == "E" ~ 20,
+    MatrixC_O == "F" ~ 21,
+    MatrixC_O == "G" ~ 22,
+    MatrixC_O == "H" ~ 23,
+    MatrixC_O == "I" ~ 24,
+    MatrixC_O == "J" ~ 25,
+    MatrixC_O == "K" ~ 26,
+    MatrixC_O == "L" ~ 27,
+    MatrixC_O == "M" ~ 28
+  )) %>%
+  mutate(MatrixC_O_outgroup_points = case_when(
+    MatrixC_O == "A" ~ 16,
+    MatrixC_O == "B" ~ 15,
+    MatrixC_O == "C" ~ 14,
+    MatrixC_O == "D" ~ 13,
+    MatrixC_O == "E" ~ 12,
+    MatrixC_O == "F" ~ 11,
+    MatrixC_O == "G" ~ 10,
+    MatrixC_O == "H" ~ 9,
+    MatrixC_O == "I" ~ 8,
+    MatrixC_O == "J" ~ 7,
+    MatrixC_O == "K" ~ 6,
+    MatrixC_O == "L" ~ 5,
+    MatrixC_O == "M" ~ 4
+  ))
+
+
+# Matrix 6: P Vs. FAV Together
+groups2 <- groups2 %>%
+  mutate(MatrixC_T_ingroup_points = case_when(
+    MatrixC_T == "A" ~ 4,
+    MatrixC_T == "B" ~ 5,
+    MatrixC_T == "C" ~ 6,
+    MatrixC_T == "D" ~ 7,
+    MatrixC_T == "E" ~ 8,
+    MatrixC_T == "F" ~ 9,
+    MatrixC_T == "G" ~ 10,
+    MatrixC_T == "H" ~ 11,
+    MatrixC_T == "I" ~ 12,
+    MatrixC_T == "J" ~ 13,
+    MatrixC_T == "K" ~ 14,
+    MatrixC_T == "L" ~ 15,
+    MatrixC_T == "M" ~ 16
+  )) %>%
+  mutate(MatrixC_T_outgroup_points = case_when(
+    MatrixC_T == "A" ~ 28,
+    MatrixC_T == "B" ~ 27,
+    MatrixC_T == "C" ~ 26,
+    MatrixC_T == "D" ~ 25,
+    MatrixC_T == "E" ~ 24,
+    MatrixC_T == "F" ~ 23,
+    MatrixC_T == "G" ~ 22,
+    MatrixC_T == "H" ~ 21,
+    MatrixC_T == "I" ~ 20,
+    MatrixC_T == "J" ~ 19,
+    MatrixC_T == "K" ~ 18,
+    MatrixC_T == "L" ~ 17,
+    MatrixC_T == "M" ~ 16
+  ))
+###################,
+##CALCULATING PULLS
+###################,
+####Matrix A: Pull of FAV on MJP and Vice Versa
+##Rankings for Opposed Matrix
+MatrixA_O_Ranking<-dplyr::recode(groups2$MatrixA_O,'M' = 0,
+                          'L' = 1,
+                          'K' = 2,
+                          'J' = 3,
+                          'I' = 4,
+                          'H' = 5,
+                          'G' = 6,
+                          'F' = 7,
+                          'E' = 8,
+                          'D' = 9,
+                          'C' = 10,
+                          'B' = 11,
+                          'A' = 12)
+##Ranking for Together Matrix
+MatrixA_T_Ranking<-dplyr::recode(groups2$MatrixA_T,'M' = 12,
+                          'L' = 11,
+                          'K' = 10,
+                          'J' = 9,
+                          'I' = 8,
+                          'H' = 7,
+                          'G' = 6,
+                          'F' = 5,
+                          'E' = 4,
+                          'D' = 3,
+                          'C' = 2,
+                          'B' = 1,
+                          'A' = 0)
+##Subtracting to Get Pulls
+Pull_FAVonMJP<-MatrixA_O_Ranking-MatrixA_T_Ranking
+Pull_MJPonFAV<-(12-MatrixA_O_Ranking)-MatrixA_T_Ranking
+
+####Matrix B: Pull of MD on Profit and Vice Versa
+##Ranking for Opposed Matrix
+MatrixB_O_Ranking<-dplyr::recode(groups2$MatrixB_O,'M' = 12,
+                          'L' = 11,
+                          'K' = 10,
+                          'J' = 9,
+                          'I' = 8,
+                          'H' = 7,
+                          'G' = 6,
+                          'F' = 5,
+                          'E' = 4,
+                          'D' = 3,
+                          'C' = 2,
+                          'B' = 1,
+                          'A' = 0)
+
+##Ranking for Together Matrix
+MatrixB_T_Ranking<-dplyr::recode(groups2$MatrixB_T,'M' = 0,
+                          'L' = 1,
+                          'K' = 2,
+                          'J' = 3,
+                          'I' = 4,
+                          'H' = 5,
+                          'G' = 6,
+                          'F' = 7,
+                          'E' = 8,
+                          'D' = 9,
+                          'C' = 10,
+                          'B' = 11,
+                          'A' = 12)
+
+##Subtracting to Get Pulls
+Pull_MDonProfit<-MatrixB_O_Ranking-MatrixB_T_Ranking
+Pull_ProfitonMD<-(12-MatrixB_O_Ranking)-MatrixB_T_Ranking
+
+####Matrix C: Pull of P on FAV and Vice Versa
+##Ranking for Opposed Matrix
+MatrixC_O_Ranking<-dplyr::recode(groups2$MatrixC_O,'M' = 0,
+                          'L' = 1,
+                          'K' = 2,
+                          'J' = 3,
+                          'I' = 4,
+                          'H' = 5,
+                          'G' = 6,
+                          'F' = 7,
+                          'E' = 8,
+                          'D' = 9,
+                          'C' = 10,
+                          'B' = 11,
+                          'A' = 12)
+
+##Ranking for Together Matrix
+MatrixC_T_Ranking<-dplyr::recode(groups2$MatrixC_T,'M' = 12,
+                          'L' = 11,
+                          'K' = 10,
+                          'J' = 9,
+                          'I' = 8,
+                          'H' = 7,
+                          'G' = 6,
+                          'F' = 5,
+                          'E' = 4,
+                          'D' = 3,
+                          'C' = 2,
+                          'B' = 1,
+                          'A' = 0)
+
+##Subtracting to Get Pulls
+Pull_PonFAV<-MatrixC_O_Ranking-MatrixC_T_Ranking
+Pull_FAVonP<-(12-MatrixC_O_Ranking)-MatrixC_T_Ranking
+
+
+####Add Pulls to data
+groups2$Pull_FAVonMJP<-Pull_FAVonMJP
+groups2$Pull_MJPonFAV<-Pull_MJPonFAV
+
+groups2$Pull_MDonProfit<-Pull_MDonProfit
+groups2$Pull_ProfitonMD<-Pull_ProfitonMD
+
+groups2$Pull_PonFAV<-Pull_PonFAV
+groups2$Pull_FAVonP<-Pull_FAVonP
+
+
+# calculate the total number of ingroup points and total number of outgroup points.
+groups2 <- groups2 %>%
+  rowwise() %>%
+  mutate(total_ingroup_points = sum(c(MatrixA_O_ingroup_points,MatrixA_T_ingroup_points,
+                                      MatrixB_O_ingroup_points,MatrixB_T_ingroup_points,
+                                      MatrixC_O_ingroup_points,MatrixC_T_ingroup_points), na.rm = T)) %>%
+  mutate(total_outgroup_points = sum(c(MatrixA_O_outgroup_points,MatrixA_T_outgroup_points,
+                                      MatrixB_O_outgroup_points,MatrixB_T_outgroup_points,
+                                      MatrixC_O_outgroup_points,MatrixC_T_outgroup_points), na.rm = T)) %>%
+  ungroup()
+
+
+# calculate the difference between the total number of points awarded to the ingroup and the total outgroup points awarded to outgroup.
+groups2 <- groups2 %>%
+  mutate(total_ingroup_minus_outgroup_points = total_ingroup_points - total_outgroup_points,
+         z_total_ingroup_minus_outgroup_points = scale(total_ingroup_minus_outgroup_points))
+
+```
+
+## SCORE MEDIATORS
+
+```{r}
+## MORAL FOUNDATIONS QUESTIONNAIRE
+#Part 1
+groups2$mf_pt1_1 <- dplyr::recode(groups2$mf_pt1_1, 
+                         "Not at all Relevant" = 1,
+                         "Not very Relevant" = 2,
+                         "Slightly Relevant" = 3,
+                         "Somewhat Relevant" = 4,
+                         "Very Relevant" = 5,
+                         "Extremely Relevant" = 6)
+
+groups2$mf_pt1_2 <- dplyr::recode(groups2$mf_pt1_2, 
+                         "Not at all Relevant" = 1,
+                         "Not very Relevant" = 2,
+                         "Slightly Relevant" = 3,
+                         "Somewhat Relevant" = 4,
+                         "Very Relevant" = 5,
+                         "Extremely Relevant" = 6)
+
+groups2$mf_pt1_3 <- dplyr::recode(groups2$mf_pt1_3, 
+                         "Not at all Relevant" = 1,
+                         "Not very Relevant" = 2,
+                         "Slightly Relevant" = 3,
+                         "Somewhat Relevant" = 4,
+                         "Very Relevant" = 5,
+                         "Extremely Relevant" = 6)
+
+groups2$mf_pt1_4 <- dplyr::recode(groups2$mf_pt1_4, 
+                         "Not at all Relevant" = 1,
+                         "Not very Relevant" = 2,
+                         "Slightly Relevant" = 3,
+                         "Somewhat Relevant" = 4,
+                         "Very Relevant" = 5,
+                         "Extremely Relevant" = 6)
+
+groups2$mf_pt1_5 <- dplyr::recode(groups2$mf_pt1_5, 
+                         "Not at all Relevant" = 1,
+                         "Not very Relevant" = 2,
+                         "Slightly Relevant" = 3,
+                         "Somewhat Relevant" = 4,
+                         "Very Relevant" = 5,
+                         "Extremely Relevant" = 6)
+
+groups2$mf_pt1_6 <- dplyr::recode(groups2$mf_pt1_6, 
+                         "Not at all Relevant" = 1,
+                         "Not very Relevant" = 2,
+                         "Slightly Relevant" = 3,
+                         "Somewhat Relevant" = 4,
+                         "Very Relevant" = 5,
+                         "Extremely Relevant" = 6)
+
+groups2$mf_pt1_7 <- dplyr::recode(groups2$mf_pt1_7, 
+                         "Not at all Relevant" = 1,
+                         "Not very Relevant" = 2,
+                         "Slightly Relevant" = 3,
+                         "Somewhat Relevant" = 4,
+                         "Very Relevant" = 5,
+                         "Extremely Relevant" = 6)
+
+groups2$mf_pt1_8 <- dplyr::recode(groups2$mf_pt1_8, 
+                         "Not at all Relevant" = 1,
+                         "Not very Relevant" = 2,
+                         "Slightly Relevant" = 3,
+                         "Somewhat Relevant" = 4,
+                         "Very Relevant" = 5,
+                         "Extremely Relevant" = 6)
+
+groups2$mf_pt1_9 <- dplyr::recode(groups2$mf_pt1_9, 
+                         "Not at all Relevant" = 1,
+                         "Not very Relevant" = 2,
+                         "Slightly Relevant" = 3,
+                         "Somewhat Relevant" = 4,
+                         "Very Relevant" = 5,
+                         "Extremely Relevant" = 6)
+
+#Part 2
+groups2$mf_pt2_1 <- dplyr::recode(groups2$mf_pt2_1, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$mf_pt2_2 <- dplyr::recode(groups2$mf_pt2_2, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$mf_pt2_3 <- dplyr::recode(groups2$mf_pt2_3, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$mf_pt2_4 <- dplyr::recode(groups2$mf_pt2_4, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$mf_pt2_5 <- dplyr::recode(groups2$mf_pt2_5, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$mf_pt2_6 <- dplyr::recode(groups2$mf_pt2_6, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$mf_pt2_7 <- dplyr::recode(groups2$mf_pt2_7, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$mf_pt2_8 <- dplyr::recode(groups2$mf_pt2_8, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$mf_pt2_9 <- dplyr::recode(groups2$mf_pt2_9, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+groups2 %<>% 
+  rowwise() %>% 
+  mutate(mf1_score = mean(c(mf_pt1_1, mf_pt1_2, mf_pt1_3, mf_pt1_4, mf_pt1_5,
+                          mf_pt1_6, mf_pt1_7, mf_pt1_8, mf_pt1_9)),
+         mf2_score = mean(c(mf_pt2_1, mf_pt2_2, mf_pt2_3, mf_pt2_4, mf_pt2_5,
+                          mf_pt2_6, mf_pt2_7, mf_pt2_8, mf_pt2_9)),
+         mf_composite = mean(c(mf_pt1_1, mf_pt1_2, mf_pt1_3, mf_pt1_4, mf_pt1_5,
+                          mf_pt1_6, mf_pt1_7, mf_pt1_8, mf_pt1_9,mf_pt2_1, mf_pt2_2,                            mf_pt2_3, mf_pt2_4, mf_pt2_5,
+                          mf_pt2_6, mf_pt2_7, mf_pt2_8, mf_pt2_9))) %>% 
+  ungroup() %>% 
+  mutate(mf1_z = scale(mf1_score),
+         mf2_z = scale(mf2_score),
+         mf_z  = scale(mf_composite))
+
+
+## NEED FOR CLOSURE SCALE
+groups2$NFCC_1<-dplyr::recode(groups2$NFCC_1, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$NFCC_2<-dplyr::recode(groups2$NFCC_2, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$NFCC_3<-dplyr::recode(groups2$NFCC_3, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+groups2$NFCC_4 <- dplyr::recode(groups2$NFCC_4, 
+                        "Strongly Disagree" = 1,
+                        "Moderately Disagree" = 2,
+                        "Slightly Disagree" = 3,
+                        "Slightly Agree" = 4,
+                        "Moderately Agree" = 5,
+                        "Strongly Agree" = 6)
+
+groups2$NFCC_5 <- dplyr::recode(groups2$NFCC_5, 
+                        "Strongly Disagree" = 1,
+                        "Moderately Disagree" = 2,
+                        "Slightly Disagree" = 3,
+                        "Slightly Agree" = 4,
+                        "Moderately Agree" = 5,
+                        "Strongly Agree" = 6)
+
+groups2$NFCC_6 <- dplyr::recode(groups2$NFCC_6, 
+                        "Strongly Disagree" = 1,
+                        "Moderately Disagree" = 2,
+                        "Slightly Disagree" = 3,
+                        "Slightly Agree" = 4,
+                        "Moderately Agree" = 5,
+                        "Strongly Agree" = 6)
+
+groups2$NFCC_7 <- dplyr::recode(groups2$NFCC_7, 
+                        "Strongly Disagree" = 1,
+                        "Moderately Disagree" = 2,
+                        "Slightly Disagree" = 3,
+                        "Slightly Agree" = 4,
+                        "Moderately Agree" = 5,
+                        "Strongly Agree" = 6)
+
+groups2$NFCC_8 <- dplyr::recode(groups2$NFCC_8, 
+                        "Strongly Disagree" = 1,
+                        "Moderately Disagree" = 2,
+                        "Slightly Disagree" = 3,
+                        "Slightly Agree" = 4,
+                        "Moderately Agree" = 5,
+                        "Strongly Agree" = 6)
+
+groups2$NFCC_9 <- dplyr::recode(groups2$NFCC_9, 
+                        "Strongly Disagree" = 1,
+                        "Moderately Disagree" = 2,
+                        "Slightly Disagree" = 3,
+                        "Slightly Agree" = 4,
+                        "Moderately Agree" = 5,
+                        "Strongly Agree" = 6)
+
+groups2$NFCC_10 <- dplyr::recode(groups2$NFCC_10, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$NFCC_11 <- dplyr::recode(groups2$NFCC_11, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$NFCC_12 <- dplyr::recode(groups2$NFCC_12, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$NFCC_13 <- dplyr::recode(groups2$NFCC_13, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$NFCC_14 <- dplyr::recode(groups2$NFCC_14, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2$NFCC_15 <- dplyr::recode(groups2$NFCC_15, 
+                         "Strongly Disagree" = 1,
+                         "Moderately Disagree" = 2,
+                         "Slightly Disagree" = 3,
+                         "Slightly Agree" = 4,
+                         "Moderately Agree" = 5,
+                         "Strongly Agree" = 6)
+
+groups2 %<>% 
+  rowwise() %>% 
+  mutate(closure = mean(c(NFCC_1, NFCC_2, NFCC_3, NFCC_4, NFCC_5,
+                          NFCC_6, NFCC_7, NFCC_8, NFCC_9, NFCC_10,
+                          NFCC_11, NFCC_12, NFCC_13, NFCC_14, NFCC_15))) %>% 
+  ungroup() %>% 
+  mutate(closure_z = scale(closure))
+
+
+##SOCIAL NORMS
+groups2$norms_amer_accept<-dplyr::recode(groups2$norms_amer_accept, 
+                         "Not at all 1" = 1,
+                         "2" = 2,
+                         "3" = 3,
+                         "4" = 4,
+                         "5" = 5,
+                         "6" = 6,
+                         "Very much 7" = 7)
+
+groups2$norms_amer_express<-dplyr::recode(groups2$norms_amer_express, 
+                         "Not at all 1" = 1,
+                         "2" = 2,
+                         "3" = 3,
+                         "4" = 4,
+                         "5" = 5,
+                         "6" = 6,
+                         "Very much 7" = 7)
+
+groups2$norms_admire_accept<-dplyr::recode(groups2$norms_admire_accept, 
+                         "Not at all 1" = 1,
+                         "2" = 2,
+                         "3" = 3,
+                         "4" = 4,
+                         "5" = 5,
+                         "6" = 6,
+                         "Very much 7" = 7)
+
+
+groups2$norms_admire_express<-dplyr::recode(groups2$norms_admire_express, 
+                         "Not at all 1" = 1,
+                         "2" = 2,
+                         "3" = 3,
+                         "4" = 4,
+                         "5" = 5,
+                         "6" = 6,
+                         "Very much 7" = 7)
+
+groups2 <- groups2 %>% 
+  mutate(norms_amer_accept_z = scale(norms_amer_accept),
+         norms_amer_express_z = scale(norms_amer_express),
+         norms_admire_accept_z = scale(norms_admire_accept),
+         norms_admire_express_z = scale(norms_admire_express))
+
+groups2 %<>% 
+  rowwise() %>% 
+  mutate(social_norms = mean(c(norms_amer_accept, norms_amer_express, norms_admire_accept, norms_admire_express))) %>% 
+  ungroup() %>% 
+  mutate(social_norms_z = scale(social_norms))
+
+```
+
+
+############################################,
+## CREATE COMPOSITE INTERGROUP BIAS MEASURE.
+############################################,
+```{r}
+
+# calculate mean intergroup bias using the three standardized measures.
+groups2 <- groups2 %>%
+  rowwise() %>%
+  mutate(mean_intergroup_bias = mean(c(z_total_ingroup_minus_outgroup_points,z_ingroup_minus_outgroup_traits_positive,z_ingroup_minus_outgroup_identify))) %>%
+  ungroup() %>% 
+  mutate(mean_intergroup_bias_z = scale(mean_intergroup_bias))
+
+
+########################################################################,
+## CREATE SEPARTE INGROUP/OUTGROUP INDICES OF INTERGROUP BIAS MEASURE.##
+########################################################################,
+##Ingroup Index 
+#within sample
+groups2 <- groups2 %>%
+  mutate(z_IngroupIdentify = scale(IngroupIdentify),
+         z_IngroupTraits   = scale(mean_ingroup_traits_positive),
+         z_IngroupPoints   = scale(total_ingroup_points)) %>%
+  ungroup()
+
+groups2 <- groups2 %>% 
+  rowwise() %>% 
+  mutate(IngroupIndex=mean(c(z_IngroupIdentify,z_IngroupTraits,z_IngroupPoints))) %>% 
+  ungroup() %>% 
+  mutate(IngroupIndex_z = scale(IngroupIndex))
+
+
+##Outgroup Index 
+groups2 <- groups2 %>%
+  mutate(z_OutgroupIdentify = scale(OutgroupIdentify),
+         z_OutgroupTraits   = scale(mean_outgroup_traits_positive),
+         z_OutgroupPoints   = scale(total_outgroup_points)) %>%
+  ungroup()
+
+groups2 <- groups2 %>% 
+  rowwise() %>% 
+  mutate(OutgroupIndex = mean(c(z_OutgroupIdentify,z_OutgroupTraits,z_OutgroupPoints))) %>% 
+  ungroup() %>% 
+  mutate(OutgroupIndex_z = scale(OutgroupIndex))
+
+write.csv(groups2, "/Users/youssefamin/Dropbox/MinimalGroup_NHB_Master/MinimalGroup_NHB2/data/nhb2_processed.csv")
+
+```
+
+```{r run all before, echo=FALSE}
+
+```

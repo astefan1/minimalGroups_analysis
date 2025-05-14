@@ -1,0 +1,96 @@
+---
+title: 'NHB1: Analyses separately'
+author: "Angelika Stefan"
+output: html_document
+---
+
+## Read in data
+
+```{r}
+nhb1a <- read.csv('../../data/nhb1a_processed.csv')
+nhb1b <- read.csv('../../data/nhb1b_processed.csv') 
+```
+
+## Test Asymmetries in intergroup bias in Prolific sample
+
+To test asymmetry in intergroup bias, we compute a regression analysis with composite intergroup bias as the dependent variable and standardized composite political orientation as a predictor.
+
+```{r}
+# Define linear model formula
+confirmatory1_formula <- mean_intergroup_bias_z ~ composite_political_orientation_z
+
+# Fit model
+confirmatory1a_freqmodel <- lm(confirmatory1_formula, nhb1a)
+summary(confirmatory1a_freqmodel)
+```
+The hypothesis is directional, i.e., conservative political orientation will be connected to more intergroup bias. This is why we compute the one-sided p-value from the output.
+
+```{r}
+df_confirm1a <- confirmatory1a_freqmodel$df.residual
+t_confirm1a <- confirmatory1a_freqmodel$coefficients[["composite_political_orientation_z"]]/summary(confirmatory1a_freqmodel)$coefficients["composite_political_orientation_z","Std. Error"]
+p_confirm1a <- 1-pt(t_confirm1a, df_confirm1a)
+confint_confirm1a <- confint(confirmatory1a_freqmodel, "composite_political_orientation_z", level = 0.9)
+```
+In the Prolific sample, the effect of political orientation on intergroup bias is significant, $\beta_z$ = `r round(confirmatory1a_freqmodel$coefficients[["composite_political_orientation_z"]], 2)`, 90\%CI[`r round(confint_confirm1a[1], 2)`, `r round(confint_confirm1a[2], 2)`], *t*(`r df_confirm1a`) = `r round(t_confirm1a, 2)`, $p$ = `r round(p_confirm1a, 3)`. 
+
+## Test Asymmetries in intergroup bias in MTurk sample
+
+To test asymmetry in intergroup bias, we compute a regression analysis with composite intergroup bias as the dependent variable and standardized composite political orientation as a predictor.
+
+```{r}
+confirmatory1b_freqmodel <- lm(confirmatory1_formula, nhb1b)
+summary(confirmatory1b_freqmodel)
+```
+
+The hypothesis is directional, i.e., conservative political orientation will be connected to more intergroup bias. This is why we compute the one-sided p-value from the output.
+
+```{r}
+df_confirm1b <- confirmatory1b_freqmodel$df.residual
+t_confirm1b <- confirmatory1b_freqmodel$coefficients[["composite_political_orientation_z"]]/summary(confirmatory1b_freqmodel)$coefficients["composite_political_orientation_z","Std. Error"]
+p_confirm1b <- 1-pt(t_confirm1b, df_confirm1b)
+confint_confirm1b <- confint(confirmatory1b_freqmodel, "composite_political_orientation_z", level = 0.9)
+```
+
+In the MTurk sample, the effect of political orientation on intergroup bias is significant, $\beta_z$ = `r round(confirmatory1b_freqmodel$coefficients[["composite_political_orientation_z"]], 2)`, 90\%CI[`r round(confint_confirm1b[1], 2)`, `r round(confint_confirm1b[2], 2)`], *t*(`r df_confirm1b`) = `r round(t_confirm1b, 2)`, $p$ = `r round(p_confirm1b, 3)`. 
+
+## Combine datasets and compute moderation by platform
+
+Combine Prolific and MTurk dataset into one
+
+```{r}
+nhb1a$platform <- "Prolific"
+nhb1b$platform <- "MTurk"
+
+nhb1 <- rbind(nhb1a, nhb1b)
+
+# Compute standardized scores for composite political orientation in the combined dataset
+nhb1$z_mean_SECS <- scale(nhb1$mean_SECS)
+nhb1$z_EconOrient <- scale(nhb1$EconOrient)
+nhb1$z_SocOrient <- scale(nhb1$SocOrient)
+nhb1$z_PolOrient <- scale(nhb1$PolOrient)
+nhb1$composite_political_orientation <- rowMeans(nhb1[, c("z_mean_SECS", "z_EconOrient", "z_SocOrient", "z_PolOrient")], na.rm = TRUE)
+nhb1$composite_political_orientation_z <- scale(nhb1$composite_political_orientation)
+
+# Compute standardized scores for mean intergroup bias in the combined dataset
+nhb1$z_total_ingroup_minus_outgroup_points <- scale(nhb1$total_ingroup_minus_outgroup_points)
+nhb1$z_ingroup_minus_outgroup_traits_positive <- scale(nhb1$ingroup_minus_outgroup_traits_positive)
+nhb1$z_ingroup_minus_outgroup_identify <- scale(nhb1$ingroup_minus_outgroup_identify)
+nhb1$mean_intergroup_bias <- rowMeans(nhb1[, c("z_total_ingroup_minus_outgroup_points", "z_ingroup_minus_outgroup_traits_positive", "z_ingroup_minus_outgroup_identify")], na.rm = TRUE)
+nhb1$mean_intergroup_bias_z <- scale(nhb1$mean_intergroup_bias)
+```
+
+Compute moderation effect of platform
+
+```{r}
+confirm1Platform <- lm(mean_intergroup_bias_z ~ composite_political_orientation_z * platform, nhb1)
+
+df_Platform <- confirm1Platform$df.residual
+t_Platform <- confirm1Platform$coefficients[["composite_political_orientation_z:platformProlific"]]/summary(confirm1Platform)$coefficients["composite_political_orientation_z:platformProlific","Std. Error"]
+p_Platform <- summary(confirm1Platform)$coefficients["composite_political_orientation_z:platformProlific", "Pr(>|t|)"]
+
+summary(confirm1Platform)
+```
+
+We do not have a directional hypothesis about the platform x ideology interaction effect and therefore use a two-sided test. The interaction effect of political orientation and platform is marginally significant, with a small increase in effect size in the Prolific platform, $\beta_z$ = `r round(confirm1Platform$coefficients[["composite_political_orientation_z:platformProlific"]], 2)`, $t$(`r df_Platform`) =  `r round(t_Platform, 2)`, $p$ = `r round(p_Platform, 3)`.
+
+Following consultation with the editor and reviewers, it was decided based on these analyses to collect additional data from Prolific.

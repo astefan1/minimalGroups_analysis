@@ -1,0 +1,347 @@
+---
+title: 'Exploratory Analyses NHB3: Ideological Extremity'
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(brms)
+library(bayestestR)
+library(Bayesrel)
+library(knitr)
+```
+
+## Read in data
+
+```{r}
+nhb3 <- read.csv('../../data/nhb3_processed.csv')
+```
+
+## Preregistered exploratory analysis
+
+From the Exploratory Analysis subsection in the Stage 1 Registered Report:
+
+*In all studies, we will also conduct exploratory analyses to determine whether ideological extremity (that is, a person’s degree of liberalism/conservatism, from moderate to extreme) predicts intergroup bias. To assess ideological extremity, we will calculate the absolute distance between the midpoint of the scale and participants’ responses for each of the four measures of political ideology listed above. We will then z-score these items and compute the mean to create a single index of ideological extremity. This will serve as our measure of extremity in all analyses.*
+
+We will also compute a reliability analysis of the combined extremity index, following this passage in the Stage 1 Registered Report:
+
+*For all scale measures, we specify the minimum necessary reliability score (alpha) as .70. For any scales for which this alpha is not achieved, we will conduct a factor analysis to identify subscales that exhibit sufficient reliability, following the same .70 cutoff. We will then separately report the relation between these subscales and our variables of interest in the Supplemental Information.*
+
+Due to the inadequate internal consistency of the intergroup bias index (see reliability analyses in separate script), we will conduct all analyses with the intergroup bias index, Tajfel points, evaluative traits, and identification ratings as dependent variables.
+
+## Reliability analysis
+
+```{r}
+strel(nhb3[, c("z_PolOrientExtremity", "z_SocOrientExtremity", "z_EconOrientExtremity", "z_SECSExtremity")], estimates = "alpha")
+```
+
+The political extremity index shows excellent internal consistency ($\alpha$ = 0.81), so we will work with the index in the following analyses.
+
+## Effect of political extremity on intergroup bias (combined measure)
+
+### Model fitting
+
+```{r}
+# Define model equation
+exploratory_formula <- mean_intergroup_bias_z ~ composite_ideological_extremity_z
+
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb3)
+
+# Fit Bayesian model
+exploratory_priors <- set_prior("normal(0, 0.5)", class = "b")
+
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb3,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb3/exploratory3_bayesmodel_extremity"
+)
+```
+
+### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef_freq, 2),
+           "CI_lower" = round(confint_freq[1], 2),
+           "CI_upper" = round(confint_freq[2], 2),
+           "p value" = round(p_confirm, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef_bayes, 2),
+           "CI_lower" = round(cred_bayes[1], 2),
+           "CI_upper" = round(cred_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+## Effect of political extremity on intergroup bias (Tajfel matrices)
+
+### Model fitting
+
+```{r}
+# Define model equation
+exploratory_formula <- z_total_ingroup_minus_outgroup_points ~ composite_ideological_extremity_z
+
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb3)
+
+# Fit Bayesian model
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb3,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb3/exploratory3_bayesmodel_extremity-points-as-DV"
+)
+```
+
+### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef_freq, 2),
+           "CI_lower" = round(confint_freq[1], 2),
+           "CI_upper" = round(confint_freq[2], 2),
+           "p value" = round(p_confirm, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef_bayes, 2),
+           "CI_lower" = round(cred_bayes[1], 2),
+           "CI_upper" = round(cred_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+## Effect of political extremity on intergroup bias (evaluative trait scores)
+
+### Model fitting
+
+```{r}
+# Define model equation
+exploratory_formula <- z_ingroup_minus_outgroup_traits_positive ~ composite_ideological_extremity_z
+
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb3)
+
+# Fit Bayesian model
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb3,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb3/exploratory3_bayesmodel_extremity-traits-as-DV"
+)
+```
+
+### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef_freq, 2),
+           "CI_lower" = round(confint_freq[1], 2),
+           "CI_upper" = round(confint_freq[2], 2),
+           "p value" = round(p_confirm, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef_bayes, 2),
+           "CI_lower" = round(cred_bayes[1], 2),
+           "CI_upper" = round(cred_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+## Effect of political extremity on intergroup bias (group identification ratings)
+
+### Model fitting
+
+```{r}
+# Define model equation
+exploratory_formula <- z_ingroup_minus_outgroup_identify ~ composite_ideological_extremity_z
+
+# Fit frequentist model
+exploratory_freqmodel <- lm(exploratory_formula, nhb3)
+
+# Fit Bayesian model
+exploratory_bayesmodel <- brms::brm(
+  formula = exploratory_formula,
+  data = nhb3,
+  family = "gaussian",
+  prior = exploratory_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  #silent = TRUE,
+  #refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb3/exploratory3_bayesmodel_extremity-identify-as-DV"
+)
+```
+
+### Model summaries
+
+```{r}
+summary(exploratory_freqmodel)
+summary(exploratory_bayesmodel)
+```
+
+### Hypothesis test
+
+Frequentist testing quantities
+
+```{r}
+# Coefficient estimate
+coef_freq <- exploratory_freqmodel$coefficients["composite_ideological_extremity_z"]
+
+# Confidence interval
+confint_freq <- confint(exploratory_freqmodel, "composite_ideological_extremity_z")
+
+# p-Value (extracted from model summary for two-sided test)
+p_confirm <- summary(exploratory_freqmodel)$coefficients["composite_ideological_extremity_z","Pr(>|t|)"]
+
+data.frame("beta_z" = round(coef_freq, 2),
+           "CI_lower" = round(confint_freq[1], 2),
+           "CI_upper" = round(confint_freq[2], 2),
+           "p value" = round(p_confirm, 3))
+```
+
+Bayesian testing quantities
+
+```{r}
+# Coefficient estimate
+coef_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", "Estimate"]
+
+# Credible interval
+cred_bayes <- fixef(exploratory_bayesmodel)["composite_ideological_extremity_z", c("Q2.5", "Q97.5")]
+
+# Bayes factor
+bf10 <- hypothesis(exploratory_bayesmodel, "composite_ideological_extremity_z = 0")
+
+data.frame("beta_z" = round(coef_bayes, 2),
+           "CI_lower" = round(cred_bayes[1], 2),
+           "CI_upper" = round(cred_bayes[2], 2),
+           "BF10" = 1/bf10$hypothesis$Evid.Ratio)
+```
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```
+
+
+
+
+
+

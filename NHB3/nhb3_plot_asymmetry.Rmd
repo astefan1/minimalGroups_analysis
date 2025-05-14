@@ -1,0 +1,71 @@
+---
+title: "NHB3 Plot"
+author: "Youssef Amin and Angelika Stefan"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(ggplot2)
+library(brms)
+```
+
+## Read in data and model file
+
+```{r}
+nhb3 <- read.csv('../../data/nhb3_processed.csv')
+nhb3_confirmatory <- readRDS('./model-fits/nhb3/confirmatory2_bayesmodel_default.rds')
+```
+
+## Extract simple slopes
+
+```{r}
+# Slopes
+beta_noInteract <- fixef(nhb3_confirmatory)[2, "Estimate"]
+beta_competitive <- mean(as_draws_array(nhb3_confirmatory, "b_composite_political_orientation_z") + as_draws_array(nhb3_confirmatory, "b_composite_political_orientation_z:conditionCompetitive"))
+beta_cooperative <- mean(as_draws_array(nhb3_confirmatory, "b_composite_political_orientation_z") + as_draws_array(nhb3_confirmatory, "b_composite_political_orientation_z:conditionCooperative"))
+
+# Intercepts
+intercept_noInteract <- fixef(nhb3_confirmatory)[1, "Estimate"]
+intercept_competitive <- mean(as_draws_array(nhb3_confirmatory, "b_Intercept") + as_draws_array(nhb3_confirmatory, "b_conditionCompetitive"))
+intercept_cooperative <- mean(as_draws_array(nhb3_confirmatory, "b_Intercept") + as_draws_array(nhb3_confirmatory, "b_conditionCooperative"))
+
+# 95% CI
+xval <- seq(-2.5, 2.5, length.out=100)
+noInteract_CI <- fitted(nhb3_confirmatory, newdata = data.frame(composite_political_orientation_z = xval, condition=rep("Control", 100)), re_formula=NA)
+competitive_CI <- fitted(nhb3_confirmatory, newdata = data.frame(composite_political_orientation_z = xval, condition=rep("Competitive", 100)), re_formula=NA)
+cooperative_CI <- fitted(nhb3_confirmatory, newdata = data.frame(composite_political_orientation_z = xval, condition=rep("Cooperative", 100)), re_formula=NA)
+
+```
+
+## Plot
+
+```{r}
+ggplot(nhb3, aes(x = composite_political_orientation_z, 
+                 y = mean_intergroup_bias_z)) +
+  geom_point(alpha = 0.5, size = 2) +
+  theme_minimal() +
+  theme(text=element_text(size=20)) +
+  facet_wrap(~factor(condition, levels =c("no_interaction", "competitive", "cooperative"), labels = c("No Interaction", "Competitive", "Cooperative")), nrow = 1) +
+  labs(
+    x = "Ideology (z-scored)",
+    y = "Intergroup Bias (z-scored)"
+  ) +
+  geom_abline(data = data.frame(condition = "no_interaction"), aes(slope = beta_noInteract, intercept = intercept_noInteract), linewidth=1.5) +
+  geom_abline(data = data.frame(condition = "competitive"), aes(slope = beta_competitive, intercept = intercept_competitive), linewidth=1.5) + 
+  geom_abline(data = data.frame(condition = "cooperative"), aes(slope = beta_cooperative, intercept = intercept_cooperative), linewidth=1.5) +
+  geom_ribbon(data = data.frame(condition = rep("no_interaction", 100)), aes(ymin = noInteract_CI[,3], ymax = noInteract_CI[,4], x=xval), inherit.aes = FALSE, alpha = 0.5) +
+  geom_ribbon(data = data.frame(condition = rep("competitive", 100)), aes(ymin = competitive_CI[,3], ymax = competitive_CI[,4], x=xval), inherit.aes = FALSE, alpha = 0.5) +
+  geom_ribbon(data = data.frame(condition = rep("cooperative", 100)), aes(ymin = cooperative_CI[,3], ymax = cooperative_CI[,4], x=xval), inherit.aes = FALSE, alpha = 0.5) +
+  geom_text(data = data.frame(condition = "no_interaction"), aes(x=0, y=5), label=paste0("beta[z] == ", round(beta_noInteract,2)), inherit.aes = FALSE, size =5, parse=TRUE, hjust = 0.5, vjust = 1) +
+  geom_text(data = data.frame(condition = "competitive"), aes(x=0, y=5), label=paste0("beta[z] == ", round(beta_competitive,2)), inherit.aes = FALSE, size =5, parse=TRUE, hjust = 0.5, vjust = 1)+
+  geom_text(data = data.frame(condition = "cooperative"), aes(x=0, y=5), label=paste0("beta[z] == ", round(beta_cooperative,2)), inherit.aes = FALSE, size =5, parse=TRUE, hjust = 0.5, vjust = 1)
+
+ggsave("./model-fits/nhb3_scatterplot.pdf", device = "pdf", width=12.05556, height=6.25000)
+ggsave("./model-fits/nhb3_scatterplot.jpg", device = "jpeg", width=12.05556, height=6.25000)
+```
+
+
+
+

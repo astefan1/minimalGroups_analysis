@@ -1,0 +1,69 @@
+---
+title: "NHB2 Plot"
+author: "Youssef Amin and Angelika Stefan"
+date: "2025-05-13"
+output: html_document
+---
+
+## Load packages
+
+```{r setup}
+library(ggplot2)
+library(brms)
+```
+
+## Read in data and model file
+
+```{r}
+nhb2 <- read.csv('../../data/nhb2_processed.csv')
+nhb2_confirmatory <- readRDS('./model-fits/nhb2/confirmatory2_bayesmodel_default.rds')
+```
+
+## Extract simple slopes
+
+```{r}
+# Slopes
+beta_random <- fixef(nhb2_confirmatory)[2, "Estimate"]
+beta_volitional <- mean(as_draws_array(nhb2_confirmatory, "b_composite_political_orientation_z") + as_draws_array(nhb2_confirmatory, "b_composite_political_orientation_z:conditionVolitional"))
+beta_attitude <- mean(as_draws_array(nhb2_confirmatory, "b_composite_political_orientation_z") + as_draws_array(nhb2_confirmatory, "b_composite_political_orientation_z:conditionAttitude"))
+
+# Intercepts
+intercept_random <- fixef(nhb2_confirmatory)[1, "Estimate"]
+intercept_volitional <- mean(as_draws_array(nhb2_confirmatory, "b_Intercept") + as_draws_array(nhb2_confirmatory, "b_conditionVolitional"))
+intercept_attitude <- mean(as_draws_array(nhb2_confirmatory, "b_Intercept") + as_draws_array(nhb2_confirmatory, "b_conditionAttitude"))
+
+# 95% CI
+xval <- seq(-2.5, 2.5, length.out=100)
+random_CI <- fitted(nhb2_confirmatory, newdata = data.frame(composite_political_orientation_z = xval, condition=rep("Random", 100)), re_formula=NA)
+volitional_CI <- fitted(nhb2_confirmatory, newdata = data.frame(composite_political_orientation_z = xval, condition=rep("Volitional", 100)), re_formula=NA)
+attitude_CI <- fitted(nhb2_confirmatory, newdata = data.frame(composite_political_orientation_z = xval, condition=rep("Attitude", 100)), re_formula=NA)
+
+```
+
+## Plot
+
+```{r}
+ggplot(nhb2, aes(x = composite_political_orientation_z, 
+                         y = mean_intergroup_bias_z)) +
+  geom_point(alpha = 0.5, size = 2) +
+  theme_minimal() +
+  theme(text=element_text(size=20)) +
+  facet_wrap(~factor(condition, levels =c("random", "volitional", "attitude"), labels = c("Random", "Volitional", "Attitude")), nrow = 1) +
+  labs(
+    x = "Ideology (z-scored)",
+    y = "Intergroup Bias (z-scored)"
+  ) +
+  geom_abline(data = data.frame(condition = "random"), aes(slope = beta_random, intercept = intercept_random), linewidth=1.5) +
+  geom_abline(data = data.frame(condition = "volitional"), aes(slope = beta_volitional, intercept = intercept_volitional), linewidth=1.5) + 
+  geom_abline(data = data.frame(condition = "attitude"), aes(slope = beta_attitude, intercept = intercept_attitude), linewidth=1.5) +
+  geom_ribbon(data = data.frame(condition = rep("random", 100)), aes(ymin = random_CI[,3], ymax = random_CI[,4], x=xval), inherit.aes = FALSE, alpha = 0.5) +
+  geom_ribbon(data = data.frame(condition = rep("volitional", 100)), aes(ymin = volitional_CI[,3], ymax = volitional_CI[,4], x=xval), inherit.aes = FALSE, alpha = 0.5) +
+  geom_ribbon(data = data.frame(condition = rep("attitude", 100)), aes(ymin = attitude_CI[,3], ymax = attitude_CI[,4], x=xval), inherit.aes = FALSE, alpha = 0.5) +
+  geom_text(data = data.frame(condition = "random"), aes(x=-2, y=4), label=paste0("beta[z] == ", round(beta_random,2)), inherit.aes = FALSE, size =5, parse=TRUE, hjust = -1, vjust = 1) +
+  geom_text(data = data.frame(condition = "volitional"), aes(x=-2, y=4), label=paste0("beta[z] == ", round(beta_volitional,2)), inherit.aes = FALSE, size =5, parse=TRUE, hjust = -1, vjust = 1)+
+  geom_text(data = data.frame(condition = "attitude"), aes(x=-2, y=4), label=paste0("beta[z] == ", round(beta_attitude,2)), inherit.aes = FALSE, size =5, parse=TRUE, hjust = -1, vjust = 1)
+
+ggsave("./model-fits/nhb2_scatterplot.pdf", device = "pdf", width=10.4375, height=6.34375)
+ggsave("./model-fits/nhb2_scatterplot.jpg", device = "jpeg", width=10.4375, height=6.34375)
+```
+
