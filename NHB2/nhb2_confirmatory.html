@@ -378,7 +378,8 @@ library(emmeans)</code></pre>
 <pre><code>## This is lavaan 0.6-19
 ## lavaan is FREE software! Please report any bugs.</code></pre>
 <pre class="r"><code>library(logspline)
-source(&quot;helper_bayes_mediation.R&quot;) # Function to report Bayesian mediation results</code></pre>
+source(&quot;helper_bayes_mediation.R&quot;) # Function to report Bayesian mediation results
+library(knitr)</code></pre>
 </div>
 <div id="read-in-data" class="section level2">
 <h2>Read in data</h2>
@@ -1098,6 +1099,77 @@ asymmetry effect persists in the Random and Volitional group, the effect
 does not seem to occur in the Attitudes group. This means that the sign
 of the interaction effect for Attitude is in the opposite direction than
 anticipated.</p>
+<p>To further investigate this effect, we compute non-preregistered
+exploratory Bayes factor for the attitude effect (interaction and
+simple) in the opposite direction (<span class="math inline">\(BF_{-0}\)</span> as well as posterior model
+probabilities for a positive, negative, or null effect.</p>
+<pre class="r"><code># Left-sided Bayes factor tests
+confirmatory2_defaultbfALeft &lt;- bayesfactor_parameters(confirmatory2_bayesmodel_default,
+                       prior=confirmatory2_priordraws_default, 
+                       direction = &quot;left&quot;, 
+                       parameters = &quot;composite_political_orientation_z:conditionAttitude&quot;)
+bayesSlopes_default_left &lt;- bayesfactor_parameters(simpleslopes_bayes_default, prior = simpleslopes_bayes0_default, direction = &quot;left&quot;)
+
+confirmatory2_defaultbfALeft</code></pre>
+<pre><code>## Bayes Factor (Savage-Dickey density ratio)
+## 
+## Parameter                                           |     BF
+## ------------------------------------------------------------
+## composite_political_orientation_z:conditionAttitude | 126.63
+## 
+## * Evidence Against The Null: 0
+## *                 Direction: Left-Sided test</code></pre>
+<pre class="r"><code>bayesSlopes_default_left</code></pre>
+<pre><code>## Bayes Factor (Savage-Dickey density ratio)
+## 
+## Parameter  |    BF
+## ------------------
+## Random     | 0.022
+## Volitional | 0.022
+## Attitude   | 0.086
+## 
+## * Evidence Against The Null: 0
+## *                 Direction: Left-Sided test</code></pre>
+<pre class="r"><code># Posterior model probabilities
+postmodprob_interaction &lt;- c(exp(confirmatory2_defaultbfALeft$log_BF), exp(confirmatory2_defaultbfA$log_BF), 1)/sum(c(exp(confirmatory2_defaultbfALeft$log_BF), exp(confirmatory2_defaultbfA$log_BF), 1))
+postmodprob_slope &lt;- exp(c(bayesSlopes_default_left$log_BF[3], bayesSlopes_default_oneSided$log_BF[3], 1))/sum(exp(c(bayesSlopes_default_left$log_BF[3], bayesSlopes_default_oneSided$log_BF[3], 1)))
+
+kable(data.frame(&quot;Coefficient&quot; = c(&quot;Attitude Interaction&quot;, &quot;Simple Slope Attitude&quot;),
+                 &quot;Smaller than zero&quot; = round(c(postmodprob_interaction[1], postmodprob_slope[1]), 2),
+                 &quot;Larger than zero&quot; = round(c(postmodprob_interaction[2], postmodprob_slope[2]), 2),
+                 &quot;Equals zero&quot; = round(c(postmodprob_interaction[3], postmodprob_slope[3]), 2)),
+      caption = &quot;Posterior Model Probabilities&quot;)</code></pre>
+<table style="width:100%;">
+<caption>Posterior Model Probabilities</caption>
+<colgroup>
+<col width="31%" />
+<col width="26%" />
+<col width="24%" />
+<col width="17%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Coefficient</th>
+<th align="right">Smaller.than.zero</th>
+<th align="right">Larger.than.zero</th>
+<th align="right">Equals.zero</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Attitude Interaction</td>
+<td align="right">0.99</td>
+<td align="right">0.00</td>
+<td align="right">0.01</td>
+</tr>
+<tr class="even">
+<td align="left">Simple Slope Attitude</td>
+<td align="right">0.03</td>
+<td align="right">0.04</td>
+<td align="right">0.93</td>
+</tr>
+</tbody>
+</table>
 </div>
 </div>
 <div id="testing-the-mediating-effect-of-morality-uncertainty-intolerance-and-norms" class="section level2">
@@ -1402,8 +1474,8 @@ reportbayesmediation(model = confirmatory3_bayesmodel,
 ## [1] stats     graphics  grDevices utils     datasets  methods   base     
 ## 
 ## other attached packages:
-## [1] logspline_2.1.22  lavaan_0.6-19     emmeans_1.11.0    bayestestR_0.14.0
-## [5] brms_2.21.0       Rcpp_1.0.13      
+## [1] knitr_1.48        logspline_2.1.22  lavaan_0.6-19     emmeans_1.11.0   
+## [5] bayestestR_0.14.0 brms_2.21.0       Rcpp_1.0.13      
 ## 
 ## loaded via a namespace (and not attached):
 ##  [1] gtable_0.3.6         tensorA_0.36.2.1     xfun_0.47           
@@ -1427,10 +1499,9 @@ reportbayesmediation(model = confirmatory3_bayesmodel,
 ## [55] pkgbuild_1.4.4       pbivnorm_0.6.0       scales_1.3.0        
 ## [58] backports_1.5.0      estimability_1.5.1   rmarkdown_2.28      
 ## [61] matrixStats_1.4.1    gridExtra_2.3        coda_0.19-4.1       
-## [64] evaluate_1.0.0       knitr_1.48           rstantools_2.4.0    
-## [67] rlang_1.1.4          xtable_1.8-4         glue_1.7.0          
-## [70] rstudioapi_0.17.1    jsonlite_1.8.8       plyr_1.8.9          
-## [73] R6_2.5.1</code></pre>
+## [64] evaluate_1.0.0       rstantools_2.4.0     rlang_1.1.4         
+## [67] xtable_1.8-4         glue_1.7.0           rstudioapi_0.17.1   
+## [70] jsonlite_1.8.8       plyr_1.8.9           R6_2.5.1</code></pre>
 </div>
 
 

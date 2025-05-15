@@ -13,6 +13,7 @@ library(emmeans)
 library(lavaan)
 library(logspline)
 source("helper_bayes_mediation.R") # Function to report Bayesian mediation results
+library(knitr)
 ```
 
 ## Read in data
@@ -501,7 +502,32 @@ data.frame("prior" = c("default", "informed"),
 
 ```
 
-The analyses show a counterintuitive effect: While the ideological asymmetry effect persists in the Random and Volitional group, the effect does not seem to occur in the Attitudes group. This means that the sign of the interaction effect for Attitude is in the opposite direction than anticipated.  
+The analyses show a counterintuitive effect: While the ideological asymmetry effect persists in the Random and Volitional group, the effect does not seem to occur in the Attitudes group. This means that the sign of the interaction effect for Attitude is in the opposite direction than anticipated.
+
+To further investigate this effect, we compute non-preregistered exploratory Bayes factor for the attitude effect (interaction and simple) in the opposite direction ($BF_{-0}$ as well as posterior model probabilities for a positive, negative, or null effect.
+
+```{r}
+# Left-sided Bayes factor tests
+confirmatory2_defaultbfALeft <- bayesfactor_parameters(confirmatory2_bayesmodel_default,
+                       prior=confirmatory2_priordraws_default, 
+                       direction = "left", 
+                       parameters = "composite_political_orientation_z:conditionAttitude")
+bayesSlopes_default_left <- bayesfactor_parameters(simpleslopes_bayes_default, prior = simpleslopes_bayes0_default, direction = "left")
+
+confirmatory2_defaultbfALeft
+bayesSlopes_default_left
+
+# Posterior model probabilities
+postmodprob_interaction <- c(exp(confirmatory2_defaultbfALeft$log_BF), exp(confirmatory2_defaultbfA$log_BF), 1)/sum(c(exp(confirmatory2_defaultbfALeft$log_BF), exp(confirmatory2_defaultbfA$log_BF), 1))
+postmodprob_slope <- exp(c(bayesSlopes_default_left$log_BF[3], bayesSlopes_default_oneSided$log_BF[3], 1))/sum(exp(c(bayesSlopes_default_left$log_BF[3], bayesSlopes_default_oneSided$log_BF[3], 1)))
+
+kable(data.frame("Coefficient" = c("Attitude Interaction", "Simple Slope Attitude"),
+                 "Smaller than zero" = round(c(postmodprob_interaction[1], postmodprob_slope[1]), 2),
+                 "Larger than zero" = round(c(postmodprob_interaction[2], postmodprob_slope[2]), 2),
+                 "Equals zero" = round(c(postmodprob_interaction[3], postmodprob_slope[3]), 2)),
+      caption = "Posterior Model Probabilities")
+```
+
 
 ## Testing the mediating effect of morality, uncertainty intolerance, and norms
 
