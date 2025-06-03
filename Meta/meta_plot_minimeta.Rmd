@@ -28,6 +28,7 @@ meta_results <- readRDS('./model-fits/Meta/bayesMeta1.rds')
 conditioneffects <- spread_draws(meta_results, r_group[group, term], b_Intercept)
 conditioneffects$b_Intercept <- conditioneffects$r_group + conditioneffects$b_Intercept
 colnames(conditioneffects)[1] <- "study"
+conditioneffects <- conditioneffects[!conditioneffects$study %in% c("Prolific", "MTurk"), ]
 ```
 
 ```{r}
@@ -47,9 +48,7 @@ studyeffects <- rbind(conditioneffects, studyeffects, fixedeffect)
 studyeffects <- ungroup(studyeffects)
 
 studyeffects$code <- dplyr::case_match(studyeffects$study,
-                                       "Prolific" ~ "1a_C",
                                        "1a" ~ "1a_S",
-                                       "MTurk" ~ "1b_C", 
                                        "1b" ~ "1b_S",
                                        c("random", "attitude", "volitional") ~ "2_C",
                                        "2" ~ "2_S",
@@ -57,14 +56,14 @@ studyeffects$code <- dplyr::case_match(studyeffects$study,
                                        "3" ~ "3_S",
                                        "Average" ~ "all")
 studyeffects$study <- factor(studyeffects$study, 
-                             levels = rev(c("Prolific", "1a", "MTurk", "1b", "random", "attitude", "volitional", "2", "no_interaction", "competitive", "cooperative", "3", "Average")),
-                             labels = rev(c("Prolific", "Effect Study 1a", "MTurk", "Effect Study 1b", "Condition: Random", "Condition: Attitude", "Conditon: Volitional", "Effect Study 2", "Condition: No Interaction", "Condition: Competitive", "Condition: Cooperative", "Effect Study 3", "Global Effect")))
+                             levels = rev(c("1a", "1b", "random", "attitude", "volitional", "2", "no_interaction", "competitive", "cooperative", "3", "Average")),
+                             labels = rev(c("Prolific", "MTurk", "Condition: Random", "Condition: Attitude", "Conditon: Volitional", "Study 2", "Condition: No Interaction", "Condition: Competitive", "Condition: Cooperative", "Study 3", "Global Effect")))
 ```
 
 
 ```{r}
 summaryStatsStudy <- studyeffects %>% group_by(study) %>% mean_qi(b_Intercept) %>% mutate_if(is.numeric, round, 2)
-summaryStatsStudy <- summaryStatsStudy[13:1,]
+summaryStatsStudy <- summaryStatsStudy[11:1,]
 ```
 
 ## Plot
@@ -73,8 +72,7 @@ summaryStatsStudy <- summaryStatsStudy[13:1,]
 p <- ggplot(studyeffects, aes(x = b_Intercept, y = study, fill = code)) +
   geom_vline(xintercept = 0, linewidth = 0.25, lty = 2) +
   stat_halfeye(.width = c(.9, .95)) +
-  scale_fill_manual(values = c("#9DCEE9", "#56B4E9", "#98E4CF", "#009E73", "#F6B989", "#D55E00", "#F4B7DA", "#CC79A7", "#6F6E6E"),
-                    labels = c("Study 1a", "", "Study 1b", "", "Study 2", "", "Study 3", "", "Combined"))
+  scale_fill_manual(values = c("#56B4E9", "#009E73", "#F6B989", "#D55E00", "#F4B7DA", "#CC79A7", "#6F6E6E"))
 p + 
   theme_minimal() +
   labs(

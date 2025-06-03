@@ -7,7 +7,7 @@ output: html_document
 
 ## Load packages
 
-```{r setup, include=FALSE}
+```{r setup}
 library(ggplot2)
 library(brms)
 library(ggside)
@@ -62,7 +62,8 @@ intercept_MTurk <- fixef(confirmatory2_bayes)[1, "Estimate"]
 ```{r}
 middleplot <- ggplot(nhb1, aes(x = composite_political_orientation_z, 
                  y = mean_intergroup_bias_z,
-                 color = platform)) +
+                 color = platform,
+                 shape = platform)) +
   geom_point(alpha = 0.5, size = 2) +  # Scatter points
   geom_abline(slope = beta_both, intercept = intercept_both, linewidth=1.5) +
   geom_abline(slope = beta_Prolific, intercept = intercept_Prolific, color = "#56B4E9", linewidth=1.5) +
@@ -72,6 +73,7 @@ middleplot <- ggplot(nhb1, aes(x = composite_political_orientation_z,
   scale_color_manual(values = c("#E69F00", "#56B4E9")) +
   labs(
     color = "Platform",
+    shape = "Platform",
     x = "Ideology (z-scored)",
     y = "Intergroup Bias (z-scored)"
   ) 
@@ -90,4 +92,10 @@ ggsave("./model-fits/nhb1_scatterplot_withDensity.jpg", device = "jpeg", width=1
 
 ```
 
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```
 

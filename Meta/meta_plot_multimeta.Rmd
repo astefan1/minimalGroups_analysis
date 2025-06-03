@@ -50,9 +50,11 @@ summaryData <- mutate_if(summaryData, is.numeric, round, 2)
 ```{r}
 p <- ggplot(plotdata, aes(x = b_Intercept, y = biasMeasure, fill = ideologyMeasure, color = ideologyMeasure)) +
   geom_vline(xintercept = 0, linewidth = 0.25, lty = 2) +
-  stat_halfeye(.width = c(.9, .95), slab_alpha=0.4) +
-  scale_fill_manual(values = alpha(c("#56B4E9", "#D55E00")), labels = c("Issue-based", "Self-reported")) +
-  scale_color_manual(values = alpha(c("#56B4E9", "#D55E00")), labels = c("Issue-based", "Self-reported")) +
+  stat_slab(alpha = 0.4) +
+  stat_pointinterval(data = plotdata[plotdata$ideologyMeasure == "selfReported", ], position = position_nudge(y = -0.1), .width = c(.9, .95)) +
+  stat_pointinterval(data = plotdata[plotdata$ideologyMeasure == "issueBased", ], position = position_nudge(y = -0.05), .width = c(.9, .95)) +
+  scale_fill_manual(values = alpha(c("#56B4E9", "#D55E00")), labels = c("Issue-based ideology", "Self-reported ideology")) +
+  scale_color_manual(values = alpha(c("#56B4E9", "#D55E00")), labels = c("Issue-based ideology", "Self-reported ideology")) +
   theme_minimal() +
   labs(
     x = "\nIdeological Asymmetry Effect (Fisher's z)",
@@ -64,7 +66,7 @@ p <- ggplot(plotdata, aes(x = b_Intercept, y = biasMeasure, fill = ideologyMeasu
         legend.title = element_text(size=16),
         legend.text = element_text(size=16),
         legend.position = "inside",
-        legend.position.inside = c(0.85, 1)) +
+        legend.position.inside = c(0.84, 1)) +
   xlim(-0.3, 0.75) +
   scale_y_discrete(labels=rev(c("Trait \n evaluation", "Tajfel points", "Ingroup/Outgroup \n identification", "Combined")))
 
@@ -84,5 +86,14 @@ ggsave("./model-fits/nhbMeta_multimeta-forest.pdf", device = "pdf", width=10.250
 ggsave("./model-fits/nhbMeta_multimeta-forest.jpg", device = "jpeg", width=10.250000, height=6.666667)
 
 ```
+
+
+## System information (for reproducibility)
+
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```
+
 
 
