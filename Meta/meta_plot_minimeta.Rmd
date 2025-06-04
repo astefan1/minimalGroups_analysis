@@ -57,7 +57,7 @@ studyeffects$code <- dplyr::case_match(studyeffects$study,
                                        "Average" ~ "all")
 studyeffects$study <- factor(studyeffects$study, 
                              levels = rev(c("1a", "1b", "random", "attitude", "volitional", "2", "no_interaction", "competitive", "cooperative", "3", "Average")),
-                             labels = rev(c("Prolific", "MTurk", "Condition: Random", "Condition: Attitude", "Conditon: Volitional", "Study 2", "Condition: No Interaction", "Condition: Competitive", "Condition: Cooperative", "Study 3", "Global Effect")))
+                             labels = rev(c("Study 1a (Prolific)", "Study 1b (MTurk)", "Condition: Random", "Condition: Attitude", "Conditon: Volitional", "Study 2", "Condition: No Interaction", "Condition: Competitive", "Condition: Cooperative", "Study 3", "Global Effect")))
 ```
 
 

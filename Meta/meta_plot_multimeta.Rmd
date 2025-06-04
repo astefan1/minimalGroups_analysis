@@ -51,7 +51,7 @@ summaryData <- mutate_if(summaryData, is.numeric, round, 2)
 p <- ggplot(plotdata, aes(x = b_Intercept, y = biasMeasure, fill = ideologyMeasure, color = ideologyMeasure)) +
   geom_vline(xintercept = 0, linewidth = 0.25, lty = 2) +
   stat_slab(alpha = 0.4) +
-  stat_pointinterval(data = plotdata[plotdata$ideologyMeasure == "selfReported", ], position = position_nudge(y = -0.1), .width = c(.9, .95)) +
+  stat_pointinterval(data = plotdata[plotdata$ideologyMeasure == "selfReported", ], position = position_nudge(y = -0.12), .width = c(.9, .95)) +
   stat_pointinterval(data = plotdata[plotdata$ideologyMeasure == "issueBased", ], position = position_nudge(y = -0.05), .width = c(.9, .95)) +
   scale_fill_manual(values = alpha(c("#56B4E9", "#D55E00")), labels = c("Issue-based ideology", "Self-reported ideology")) +
   scale_color_manual(values = alpha(c("#56B4E9", "#D55E00")), labels = c("Issue-based ideology", "Self-reported ideology")) +
@@ -64,10 +64,10 @@ p <- ggplot(plotdata, aes(x = b_Intercept, y = biasMeasure, fill = ideologyMeasu
   ) +
   theme(text=element_text(size=20),
         legend.title = element_text(size=16),
-        legend.text = element_text(size=16),
+        legend.text = element_text(size=14),
         legend.position = "inside",
-        legend.position.inside = c(0.84, 1)) +
-  xlim(-0.3, 0.75) +
+        legend.position.inside = c(-0.15,0)) +
+  xlim(-0.1, 0.75) +
   scale_y_discrete(labels=rev(c("Trait \n evaluation", "Tajfel points", "Ingroup/Outgroup \n identification", "Combined")))
 
 p +
@@ -82,8 +82,8 @@ p +
     hjust = "inward", inherit.aes = FALSE, vjust=0.5, color = "#D55E00", nudge_y = 0.15, fontface = "bold"
   ) 
   
-ggsave("./model-fits/nhbMeta_multimeta-forest.pdf", device = "pdf", width=10.250000, height=6.666667)
-ggsave("./model-fits/nhbMeta_multimeta-forest.jpg", device = "jpeg", width=10.250000, height=6.666667)
+ggsave("./model-fits/nhbMeta_multimeta-forest.pdf", device = "pdf", width=10.250000, height=6.9)
+ggsave("./model-fits/nhbMeta_multimeta-forest.jpg", device = "jpeg", width=10.250000, height=6.9)
 
 ```
 
