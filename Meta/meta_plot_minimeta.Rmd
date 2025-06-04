@@ -72,7 +72,10 @@ summaryStatsStudy <- summaryStatsStudy[11:1,]
 p <- ggplot(studyeffects, aes(x = b_Intercept, y = study, fill = code)) +
   geom_vline(xintercept = 0, linewidth = 0.25, lty = 2) +
   stat_halfeye(.width = c(.9, .95)) +
-  scale_fill_manual(values = c("#56B4E9", "#009E73", "#F6B989", "#D55E00", "#F4B7DA", "#CC79A7", "#6F6E6E"))
+scale_fill_manual(values = c("#56B4E9", "#E69F00", "#98E4CF", "#009E73", "#F4B7DA", "#CC79A7", "#6F6E6E"))
+
+
+
 p + 
   theme_minimal() +
   labs(
