@@ -212,5 +212,10 @@ data.frame("condition" = c("competitive", "cooperative"),
            "BF01" = round(c(exploratory2_defaultbfV, exploratory2_defaultbfA), 3))
 ```
 
+## System information (for reproducibility)
 
+```{r}
+Sys.info()[1:3]
+sessionInfo()
+```
 
