@@ -1,0 +1,216 @@
+---
+title: "Non-Preregistered Exploratory Analyses NHB3: Separate Analysis for Ingroup Favoritism vs. Outgroup Derogation"
+author: "Angelika Stefan"
+date: "2025-06-19"
+output: html_document
+---
+
+## Why this exploratory analysis?
+
+At odds with leading theoretical perspectives and our own expectations, we found substantive evidence in our preregistered analyses that intergroup dynamics did not affect the strength of the relationship between political ideology and intergroup bias. Here, we conduct an exploratory analysis to understand whether the difference score used in the preregistered analysis may be masking an effect that switches from favoring the ingroup (cooperative) to harming the outgroup (competitive). We believe that this additional analysis may be of theoretical interest to readers.
+
+## Load packages
+
+```{r setup}
+library(brms)
+library(bayestestR)
+library(emmeans)
+```
+
+## Read in data
+
+```{r}
+nhb3 <- read.csv('../../data/nhb3_processed.csv')
+```
+
+### Model fitting
+
+```{r}
+nhb3$condition <- factor(nhb3$condition, 
+                         levels = c("no_interaction", "competitive", "cooperative"),
+                         labels = c("Control", "Competitive", "Cooperative"))
+
+# Define model equations
+exploratory1_formula <- IngroupIndex_z ~ composite_political_orientation_z * condition
+exploratory2_formula <- OutgroupIndex_z ~ composite_political_orientation_z * condition
+
+# Fit frequentist model
+exploratory1_freqmodel <- lm(exploratory1_formula, data = nhb3)
+exploratory2_freqmodel <- lm(exploratory2_formula, data = nhb3)
+
+# Fit Bayesian models
+
+exploratory_default_priors <- c(
+  set_prior("normal(0, 0.5)", class = "b", coef="composite_political_orientation_z"),
+  set_prior("normal(0, 0.5)", class = "b", coef="conditionCompetitive"),
+  set_prior("normal(0, 0.5)", class = "b", coef="conditionCooperative"),
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:conditionCompetitive"),
+  set_prior("normal(0, 0.2)", class = "b", coef="composite_political_orientation_z:conditionCooperative")
+  )
+
+exploratory1_bayesmodel <- brms::brm(
+  formula = exploratory1_formula,
+  data = nhb3,
+  family = "gaussian",
+  prior = exploratory_default_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb3/exploratory_noprereg1_bayesmodel"
+)
+
+exploratory2_bayesmodel <- brms::brm(
+  formula = exploratory2_formula,
+  data = nhb3,
+  family = "gaussian",
+  prior = exploratory_default_priors,
+  sample_prior = TRUE, 
+  iter = 100000,
+  chains = 4,
+  seed = 987654,
+  silent = TRUE,
+  refresh = 0,
+  warmup = 5000,
+  file = "./model-fits/nhb3/exploratory_noprereg2_bayesmodel"
+)
+
+```
+
+### Model summaries
+
+Ingroup Favoritism:
+
+```{r}
+summary(exploratory1_bayesmodel)
+summary(exploratory1_freqmodel)
+```
+
+Outgroup Derogation:
+
+```{r}
+summary(exploratory2_bayesmodel)
+summary(exploratory2_freqmodel)
+```
+
+### Frequentist tests of interaction effects
+
+Ingroup Favoritism:
+
+```{r}
+# Coefficient estimate
+coef1_freqV <- exploratory1_freqmodel$coefficients["composite_political_orientation_z:conditionCompetitive"]
+coef1_freqA <- exploratory1_freqmodel$coefficients["composite_political_orientation_z:conditionCooperative"]
+
+# Confidence interval
+confint1_freqV <- confint(exploratory1_freqmodel, "composite_political_orientation_z:conditionCompetitive")
+confint1_freqA <- confint(exploratory1_freqmodel, "composite_political_orientation_z:conditionCooperative")
+
+# 90% Confidence interval
+confint1_freqV90 <- confint(exploratory1_freqmodel, "composite_political_orientation_z:conditionCompetitive", prob = 0.90)
+confint1_freqA90 <- confint(exploratory1_freqmodel, "composite_political_orientation_z:conditionCooperative", prob = 0.90)
+
+# p-Value (two-sided)
+p_confirm1V <- summary(exploratory1_freqmodel)$coefficients["composite_political_orientation_z:conditionCompetitive",4]
+p_confirm1A <- summary(exploratory1_freqmodel)$coefficients["composite_political_orientation_z:conditionCooperative",4]
+
+data.frame("beta_z" = round(c(coef1_freqV, coef1_freqA), 2),
+           "CI_lower" = round(c(confint1_freqV[1], confint1_freqA[1]), 2),
+           "CI_upper" = round(c(confint1_freqV[2], confint1_freqA[2]), 2),
+           "CI_lower_90" = round(c(confint1_freqV90[1], confint1_freqA90[1]), 2),
+           "CI_upper_90" = round(c(confint1_freqV90[2], confint1_freqA90[2]), 2),
+           "p value" = round(c(p_confirm1V, p_confirm1A), 3))
+```
+
+Outgroup Derogation:
+
+```{r}
+# Coefficient estimate
+coef2_freqV <- exploratory2_freqmodel$coefficients["composite_political_orientation_z:conditionCompetitive"]
+coef2_freqA <- exploratory2_freqmodel$coefficients["composite_political_orientation_z:conditionCooperative"]
+
+# Confidence interval
+confint2_freqV <- confint(exploratory2_freqmodel, "composite_political_orientation_z:conditionCompetitive")
+confint2_freqA <- confint(exploratory2_freqmodel, "composite_political_orientation_z:conditionCooperative")
+
+# 90% Confidence interval
+confint2_freqV90 <- confint(exploratory2_freqmodel, "composite_political_orientation_z:conditionCompetitive", prob = 0.90)
+confint2_freqA90 <- confint(exploratory2_freqmodel, "composite_political_orientation_z:conditionCooperative", prob = 0.90)
+
+# p-Value (two-sided)
+p_confirm2V <- summary(exploratory2_freqmodel)$coefficients["composite_political_orientation_z:conditionCompetitive",4]
+p_confirm2A <- summary(exploratory2_freqmodel)$coefficients["composite_political_orientation_z:conditionCooperative",4]
+
+data.frame("beta_z" = round(c(coef2_freqV, coef2_freqA), 2),
+           "CI_lower" = round(c(confint2_freqV[1], confint2_freqA[1]), 2),
+           "CI_upper" = round(c(confint2_freqV[2], confint2_freqA[2]), 2),
+           "CI_lower_90" = round(c(confint2_freqV90[1], confint2_freqA90[1]), 2),
+           "CI_upper_90" = round(c(confint2_freqV90[2], confint2_freqA90[2]), 2),
+           "p value" = round(c(p_confirm2V, p_confirm2A), 3))
+```
+
+## Bayesian tests of interaction effects
+
+Ingroup Favoritism:
+
+```{r}
+# Coefficient estimate
+coef1_defaultbayesV <- fixef(exploratory1_bayesmodel)["composite_political_orientation_z:conditionCompetitive", "Estimate"]
+coef1_defaultbayesA <- fixef(exploratory1_bayesmodel)["composite_political_orientation_z:conditionCooperative", "Estimate"]
+
+# 95% Credible interval
+cred1_defaultbayesV <- fixef(exploratory1_bayesmodel)["composite_political_orientation_z:conditionCompetitive", c("Q2.5", "Q97.5")]
+cred1_defaultbayesA <- fixef(exploratory1_bayesmodel)["composite_political_orientation_z:conditionCooperative", c("Q2.5", "Q97.5")]
+
+# 90% Credible interval
+cred90_1_defaultbayesV <- fixef(exploratory1_bayesmodel, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionCompetitive", c("Q5", "Q95")]
+cred90_1_defaultbayesA <- fixef(exploratory1_bayesmodel, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionCooperative", c("Q5", "Q95")]
+
+# Bayes factor
+exploratory1_defaultbfV <- hypothesis(exploratory1_bayesmodel, "composite_political_orientation_z:conditionCompetitive = 0")$hypothesis$Evid.Ratio
+exploratory1_defaultbfA <- hypothesis(exploratory1_bayesmodel, "composite_political_orientation_z:conditionCooperative = 0")$hypothesis$Evid.Ratio
+
+# Interaction effects
+data.frame("condition" = c("competitive", "cooperative"),
+           "beta_z" = round(c(coef1_defaultbayesV, coef1_defaultbayesA), 2),
+           "CI_lower_95" = round(c(cred1_defaultbayesV[1], cred1_defaultbayesA[1]), 2),
+           "CI_upper_95" = round(c(cred1_defaultbayesV[2], cred1_defaultbayesA[2]), 2),
+           "CI_lower_90" = round(c(cred90_1_defaultbayesV[1], cred90_1_defaultbayesA[1]), 2),
+           "CI_upper_90" = round(c(cred90_1_defaultbayesV[2], cred90_1_defaultbayesA[2]), 2),
+           "BF01" = round(c(exploratory1_defaultbfV, exploratory1_defaultbfA), 3))
+```
+
+Outgroup Derogation:
+
+```{r}
+# Coefficient estimate
+coef2_defaultbayesV <- fixef(exploratory2_bayesmodel)["composite_political_orientation_z:conditionCompetitive", "Estimate"]
+coef2_defaultbayesA <- fixef(exploratory2_bayesmodel)["composite_political_orientation_z:conditionCooperative", "Estimate"]
+
+# 95% Credible interval
+cred2_defaultbayesV <- fixef(exploratory2_bayesmodel)["composite_political_orientation_z:conditionCompetitive", c("Q2.5", "Q97.5")]
+cred2_defaultbayesA <- fixef(exploratory2_bayesmodel)["composite_political_orientation_z:conditionCooperative", c("Q2.5", "Q97.5")]
+
+# 90% Credible interval
+cred90_2_defaultbayesV <- fixef(exploratory2_bayesmodel, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionCompetitive", c("Q5", "Q95")]
+cred90_2_defaultbayesA <- fixef(exploratory2_bayesmodel, probs = c(0.05, 0.95))["composite_political_orientation_z:conditionCooperative", c("Q5", "Q95")]
+
+# Bayes factor
+exploratory2_defaultbfV <- hypothesis(exploratory2_bayesmodel, "composite_political_orientation_z:conditionCompetitive = 0")$hypothesis$Evid.Ratio
+exploratory2_defaultbfA <- hypothesis(exploratory2_bayesmodel, "composite_political_orientation_z:conditionCooperative = 0")$hypothesis$Evid.Ratio
+
+# Interaction effects
+data.frame("condition" = c("competitive", "cooperative"),
+           "beta_z" = round(c(coef2_defaultbayesV, coef2_defaultbayesA), 2),
+           "CI_lower_95" = round(c(cred2_defaultbayesV[1], cred2_defaultbayesA[1]), 2),
+           "CI_upper_95" = round(c(cred2_defaultbayesV[2], cred2_defaultbayesA[2]), 2),
+           "CI_lower_90" = round(c(cred90_2_defaultbayesV[1], cred90_2_defaultbayesA[1]), 2),
+           "CI_upper_90" = round(c(cred90_2_defaultbayesV[2], cred90_2_defaultbayesA[2]), 2),
+           "BF01" = round(c(exploratory2_defaultbfV, exploratory2_defaultbfA), 3))
+```
+
+
+
