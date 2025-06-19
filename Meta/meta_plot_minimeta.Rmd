@@ -14,6 +14,7 @@ library(ggdist)
 library(tidybayes)
 library(dplyr)
 library(stringr)
+library(ggtext)
 ```
 
 ## Read in model file
@@ -56,8 +57,8 @@ studyeffects$code <- dplyr::case_match(studyeffects$study,
                                        "3" ~ "3_S",
                                        "Average" ~ "all")
 studyeffects$study <- factor(studyeffects$study, 
-                             levels = rev(c("1a", "1b", "random", "attitude", "volitional", "2", "no_interaction", "competitive", "cooperative", "3", "Average")),
-                             labels = rev(c("Study 1a (Prolific)", "Study 1b (MTurk)", "Condition: Random", "Condition: Attitude", "Conditon: Volitional", "Study 2", "Condition: No Interaction", "Condition: Competitive", "Condition: Cooperative", "Study 3", "Global Effect")))
+                             levels = rev(c("1a", "1b", "2", "random", "volitional", "attitude", "3", "no_interaction", "competitive", "cooperative", "Average")),
+                             labels = rev(c("<b>Study 1a (Prolific)</b>", "<b>Study 1b (MTurk)</b>", "<b>Study 2</b>", "Condition: Random", "Conditon: Volitional", "Condition: Attitude", "<b>Study 3</b>", "Condition: No Interaction", "Condition: Competitive", "Condition: Cooperative", "<b>Global Effect</b>")))
 ```
 
 
@@ -84,7 +85,11 @@ p +
     fill = ""
   ) +
   theme(text=element_text(size=20),
-        legend.position = "none") + 
+        legend.position = "none",
+        axis.text.y = element_markdown(size = 16,
+                                       angle = 0,
+                                       hjust = 1,
+                                       vjust=-0.7)) + 
   xlim(-0.3, 0.75) +
   geom_text(
     data = summaryStatsStudy,
