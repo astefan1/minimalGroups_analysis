@@ -27,12 +27,12 @@ HTML files contain the knitted output from R Markdown files. As a general rule, 
 All scripts assume the following: 
 
 * The working directory is set to the source file location.
-* The data are stored at the highest level in a folder called 'data'
+* The data are stored at the highest level in a folder called 'data' (data can be found on https://osf.io/jxsgw)
 * There is a folder in the working directory called 'model-fits' (this is where brms model fit files are saved)
 
-Data preprocessing scripts conduct preprocessing steps on the raw data. We publicly share preprocessed, but not raw data to protect the anonymity of our participants. This means results of data preprocessing cannot be reproduced without contacting the author team. However, the script provides a thorough documentation of the preprocessing steps. All confirmatory and exploratory analyses can be reproduced using the preprocessed data.
+Data preprocessing scripts conduct preprocessing steps on the raw data. We publicly share preprocessed, but not raw data on the associated OSF project (https://osf.io/jxsgw) to protect the anonymity of our participants. This means results of data preprocessing cannot be reproduced without contacting the author team. However, the script provides a thorough documentation of the preprocessing steps. All confirmatory and exploratory analyses can be reproduced using the preprocessed data.
 
-Bayesian analyses rely on Hamiltonian Monte Carlo sampling. We set a seed to make the random process reproducible on our machine, but since compiling is idiosyncratic on each machine, the seed will not guarantee reproducibility on other machines. This means that all Bayesian analyses are only reproducible with Monte Carlo error, i.e., Bayes factors and posterior estimates may deviate slightly from reported results if analyses are re-executed on a different machine. To make all analyses that depend on fitted model objects reproducible and allow others to investigate our posterior samples, we share the fitted model objects.
+Bayesian analyses rely on Hamiltonian Monte Carlo sampling. We set a seed to make the random process reproducible on our machine, but since compiling is idiosyncratic on each machine, the seed will not guarantee reproducibility on other machines. This means that all Bayesian analyses are only reproducible with Monte Carlo error, i.e., Bayes factors and posterior estimates may deviate slightly from reported results if analyses are re-executed on a different machine. To make all analyses that depend on fitted model objects reproducible and allow others to investigate our posterior samples, we share the fitted model objects on the OSF.
 
 ## Folder structure
 
@@ -40,10 +40,10 @@ The analyses assume the following folder structure:
 
 :file_folder: data <br>
 :file_folder: analyses<br>
----|:file_folder: NHB1<br>
----|:file_folder: NHB2<br>
----|:file_folder: NHB3<br>
----|:file_folder: Meta<br>
+---| :file_folder: NHB1<br>
+---| :file_folder: NHB2<br>
+---| :file_folder: NHB3<br>
+---| :file_folder: Meta<br>
 
 ## Steps to reproduce analyses
 
