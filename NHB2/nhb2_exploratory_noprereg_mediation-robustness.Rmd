@@ -1,0 +1,230 @@
+---
+title: "Mediation Robustness Checks"
+author: "Angelika Stefan"
+output: html_document
+---
+
+As suggested in the review phase of Stage 2 of this registered report, we conduct several robustness checks to analyze the generalizability of our results to different sub-samples and to test assumptions of the causal mediation model.
+
+## Load packages
+
+```{r setup}
+library(mediation)
+library(lavaan)
+```
+
+
+## Read in data
+
+```{r}
+nhb2 <- read.csv('../../data/nhb2_processed.csv')
+```
+
+## Sensitivity analysis: Mediating effect of moral values
+
+Following Imai et al. (2010) and Tingley et al. (2014), we investigate the sensitivity of the mediating effect of moral values to pre-treatment confounders. Note that the `mediation` package only allows for single-mediator models, and Imai's sensitivity analyses have not been developed for simultaneous mediation models. The closest approximation to the reported `lavaan` model can be obtained from the following:
+
+```{r}
+med.fit <- lm(mf_total_z ~ composite_political_orientation_z, data = nhb2)
+out.fit <- lm(mean_intergroup_bias_z ~ composite_political_orientation_z + nfcc_total_z + mf_total_z + norms_total_z, data = nhb2)
+
+med.out <- mediate(med.fit, out.fit, treat = "composite_political_orientation_z", mediator = "mf_total_z", robustSE = TRUE)
+summary(med.out)
+```
+
+```{r}
+sens <- medsens(med.out, effect.type = "indirect")
+summary(sens)
+```
+
+This sensitivity analysis suggests that the estimated indirect effect would reach zero at $\rho = 0.2$, that is, at small-to-medium levels of unmeasured mediator-outcome confounding.
+
+A sensitivity analysis with respect to the violation of the homogenous interaction assumption (i.e., the existence of treatment-mediator interactions) cannot be conducted in the `mediation` package because the package only allows for binary treatment variables. Therefore, as an alternative, we refit the model while allowing for treatment-mediator interactions and observe the estimates for the interaction effects and the change in the indirect effect (GPT-5.6 Luna was used in developing this code):
+
+```{r}
+# Create interaction variables
+
+nhb2$X_M1 <- with(
+  nhb2,
+  composite_political_orientation_z * nfcc_total_z
+)
+
+nhb2$X_M2 <- with(
+  nhb2,
+  composite_political_orientation_z * mf_total_z
+)
+
+nhb2$X_M3 <- with(
+  nhb2,
+  composite_political_orientation_z * norms_total_z
+)
+```
+
+
+```{r}
+# Fit model with interaction terms between treatment and mediators
+
+interaction_model <- "
+
+    nfcc_total_z ~ a1*composite_political_orientation_z
+    mf_total_z ~ a2*composite_political_orientation_z
+    norms_total_z ~ a3*composite_political_orientation_z
+
+    mean_intergroup_bias_z ~ cp*composite_political_orientation_z + b1*nfcc_total_z + b2*mf_total_z + b3*norms_total_z + d1*X_M1 + d2*X_M2 + d3*X_M3
+    
+    indirectMF := a2 * b2
+    condIndirectMF := a2 * (b2 + d2)
+
+"
+
+fit_interaction <- lavaan::sem(
+    interaction_model,
+    data = nhb2,
+    missing = "fiml"
+)
+
+summary(fit_interaction, standardized = TRUE, ci = TRUE)
+```
+
+
+All three interaction parameters (d1-d3) are close to zero, with CIs including zero. Furthermore, the indirect effect (a*b, `IndirectMF`) for moral values remains almost unchanged compared to the preregistered model reported in the manuscript, and the conditional indirect effect (`condIndirectMF`) is also very close to the non-conditional indirect effect. This shows that confounding through treatment-mediator interactions is unlikely.
+
+## Mediation analysis (and sensitivity analyses) separate for conditions
+
+Next, we conduct the preregistered mediation analysis separately for all three conditions. For each condition, we first conduct the mediation analysis with three parallel mediators. We then conduct sensitivity analyses for unmeasured mediator-outcome confounding and treatment-mediator interactions (analogous to the sensitivity analyses reported for the full dataset).
+
+```{r}
+# Create data subsets
+nhb2Ran <- nhb2[nhb2$condition == "random", ]
+nhb2Vol <- nhb2[nhb2$condition == "volitional", ]
+nhb2Att <- nhb2[nhb2$condition == "attitude", ]
+
+# Define model
+medmodel <- "
+    mean_intergroup_bias_z ~ b1*nfcc_total_z + b2*mf_total_z + b3*norms_total_z + c_p*composite_political_orientation_z
+    nfcc_total_z ~ a1*composite_political_orientation_z
+    mf_total_z ~ a2*composite_political_orientation_z
+    norms_total_z ~ a3*composite_political_orientation_z
+    
+    indirectNFCC := a1 * b1
+    indirectMF := a2 * b2
+    indirectNORM := a3 * b3
+    total_indirects := indirectNFCC + indirectMF + indirectNORM
+    total_c := c_p + (indirectNFCC) + (indirectMF) + (indirectNORM)
+    direct := c_p
+    propNFCC := indirectNFCC/total_c
+    propMF := indirectMF/total_c
+    propNORM := indirectNORM/total_c
+    total_propM := total_indirects/total_c
+ "
+
+# Fit models
+fit_ran <- lavaan::sem(medmodel, data = nhb2Ran, missing = "fiml")
+fit_vol <- lavaan::sem(medmodel, data = nhb2Vol, missing = "fiml")
+fit_att <- lavaan::sem(medmodel, data = nhb2Att, missing = "fiml")
+
+# Specify function for reporting
+
+reportMED <- function(model){
+  params <- lavaan::summary(model, standardized = TRUE, ci = TRUE)
+  report <- tail(params$p, 10)[, c("label", "est", "pvalue", "ci.lower", "ci.upper")]
+  report[, 2:5] <- round(report[, 2:5], 3)
+  return(report)
+}
+
+# Create function for sensitivity analysis to pre-treatment confounders
+
+sensPreTreatConfound <- function(data, mediator = "mf_total_z"){
+  med.fit <- lm(mf_total_z ~ composite_political_orientation_z, data = data)
+  out.fit <- lm(mean_intergroup_bias_z ~ composite_political_orientation_z + nfcc_total_z + mf_total_z + norms_total_z, data = data)
+  
+  med.out <- mediate(med.fit, out.fit, treat = "composite_political_orientation_z", mediator = mediator, robustSE = TRUE)
+  summary(med.out)
+}
+
+```
+
+### Random assignment
+
+```{r}
+reportMED(fit_ran)
+```
+
+Estimates are overall comparable with full dataset. However, indirect effect of moral values is a bit smaller ($ab = 0.11$ in the Random Assignment group vs. $ab = 0.16$ in the full sample).
+
+```{r}
+sens.random <- sensPreTreatConfound(nhb2Ran, mediator = "mf_total_z")
+summary(medsens(sens.random, effect.type = "indirect"))
+```
+
+This sensitivity analysis suggests that the estimated indirect effect would reach zero at $\rho = 0.1$, that is, at low levels of unmeasured mediator-outcome confounding.
+
+```{r}
+fit_interaction <- lavaan::sem(
+    interaction_model,
+    data = nhb2Ran,
+    missing = "fiml"
+)
+
+summary(fit_interaction, standardized = TRUE, ci = TRUE)
+```
+
+The interaction parameters d1 and d3 are close to zero, with CIs including zero. The interaction parameter d2 (measuring treatment-mediator confounding for moral values) is negative and about as strong as the observed mediation effect in the model without interaction terms. In line with this, estimates for the indirect effect and conditional indirect effect are substantially attenuated compared to the indirect effect in the model without interactions. This shows that confounding through treatment-mediator interactions in the Random Assignment Group is likely.
+
+
+## Volitional assignment
+
+```{r}
+reportMED(fit_vol)
+```
+
+The indirect effect of moral values is substantially larger in the Volitional group ($ab = 0.28$ in the Volitional Assignment group vs. $ab = 0.16$ in the full sample).
+
+```{r}
+sens.random <- sensPreTreatConfound(nhb2Vol, mediator = "mf_total_z")
+summary(medsens(sens.random, effect.type = "indirect"))
+```
+
+The sensitivity analysis suggests that the estimated indirect effect would reach zero at $\rho = 0.3$, that is, at moderate levels of unmeasured mediator-outcome confounding.
+
+```{r}
+fit_interaction <- lavaan::sem(
+    interaction_model,
+    data = nhb2Vol,
+    missing = "fiml"
+)
+
+summary(fit_interaction, standardized = TRUE, ci = TRUE)
+```
+
+Two out of three interaction parameters (d2, d3) are close to zero, with CIs including zero. The point estimate of d1 is relatively large ($d1 = 0.11), but there is also a lot of uncertainty about this parameter, such that the confidence interval still includes zero. The indirect effect and conditional indirect effect are only slightly attenuated compared to the model without interactions. This shows that confounding through treatment-mediator interactions is unlikely for the mediating effect of moral values, but confounding could play a role for the mediating effect of uncertainty intolerance.
+
+## Attitude-based assignment
+
+```{r}
+reportMED(fit_att)
+```
+
+Our preregistered analyses showed no effect of ideology on intergroup bias in the attitude condition. This is confirmed in the mediation analyses where small positive indirect effects (analogous to the other two conditions) are cancelled out by a negative direct effect of near identical size.
+
+```{r}
+sens.random <- sensPreTreatConfound(nhb2Att, mediator = "mf_total_z")
+summary(medsens(sens.random, effect.type = "indirect"))
+```
+
+The sensitivity analysis suggests that the estimated indirect effect would reach zero at $\rho = 0.1$, that is, at low levels of unmeasured mediator-outcome confounding.
+
+
+```{r}
+fit_interaction <- lavaan::sem(
+    interaction_model,
+    data = nhb2Att,
+    missing = "fiml"
+)
+
+summary(fit_interaction, standardized = TRUE, ci = TRUE)
+```
+
+
+All three interaction parameters (d1-d3) have substantial point estimates, but only d1 (mediator-outcome interaction for uncertainty intolerance) and d2 (mediator-outcome interaction for moral values) have confidence intervals that exclude zero. The indirect effect and conditional indirect effect are both higher compared to the indirect effect in the model without interactions. This shows that the effect may have been confounded, but in the sense that it was attenuated in the simple parallel mediation model without interactions.
+

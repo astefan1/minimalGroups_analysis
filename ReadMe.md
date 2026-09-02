@@ -68,6 +68,7 @@ The analyses assume the following folder structure:
 5. Run exploratory analysis script with suffix 'extremity'. This reproduces exploratory results for the influence of ideological extremity on intergroup bias.
 6. Run exploratory analysis scripts with suffix '...-as-DV'. These reproduce results from step 3 using ingroup-vs-outgroup identification, points, and traits as DV. Analyses were conducted because internal consistency of composite bias measure was inadequate.
 7. Run script 'nhb2_plot_asymmetry.Rmd' to generate the scatterplot depicting the relation between ideology and bias in both platforms.
+8. Run script 'nhb2_exploratory_noprereg_mediation-robustness.Rmd' for sensitivity analyses of confirmatory parallel mediation analysis
 
 ### Study 3
 1. Open folder :file_folder: NHB3
