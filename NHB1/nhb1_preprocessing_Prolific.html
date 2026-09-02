@@ -366,6 +366,7 @@ display: none;
 <pre><code>## The following objects are masked from &#39;package:base&#39;:
 ## 
 ##     intersect, setdiff, setequal, union</code></pre>
+<pre class="r"><code>library(knitr)</code></pre>
 </div>
 <div id="read-in-dataset" class="section level2">
 <h2>Read in dataset</h2>
@@ -405,11 +406,33 @@ research group upon reasonable request.</p>
 <div id="exclude-participants-based-on-failed-attention-check" class="section level2">
 <h2>Exclude participants based on failed attention check</h2>
 <pre class="r"><code>ssbefore &lt;- nrow(nhb1a)
+exclGroups &lt;- nhb1a[nhb1a$skyColor != &#39;purple&#39;, &quot;condition&quot;]
 nhb1a &lt;- nhb1a[nhb1a$skyColor == &#39;purple&#39;, ]
 ssafter &lt;- nrow(nhb1a)</code></pre>
 <p>We recruited 1160 participants on Prolific. 87 participants were
 excluded because they failed the attention check. The remaining sample
-size of 1073 corresponds to the preregistered sample size.</p>
+size of 1073 corresponds to the preregistered sample size. The
+distribution of participants who failed the attention check across
+experimental groups (0 = Underestimator, 1 = Overestimator) was:</p>
+<pre class="r"><code>kable(table(exclGroups), col.names = c(&quot;Group&quot;, &quot;Frequency&quot;))</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Group</th>
+<th align="right">Frequency</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">0</td>
+<td align="right">53</td>
+</tr>
+<tr class="even">
+<td align="left">1</td>
+<td align="right">34</td>
+</tr>
+</tbody>
+</table>
 </div>
 <div id="check-if-people-correctly-assigned-themselves-to-their-group" class="section level2">
 <h2>Check if people correctly assigned themselves to their group</h2>
@@ -1041,22 +1064,23 @@ nhb1a$OutgroupIndex_z &lt;- scale(nhb1a$OutgroupIndex)</code></pre>
 <div id="system-information-for-reproducibility" class="section level2">
 <h2>System information (for reproducibility)</h2>
 <pre class="r"><code>Sys.info()[1:3]</code></pre>
-<pre><code>##       sysname       release       version 
-##     &quot;Windows&quot;      &quot;10 x64&quot; &quot;build 22631&quot;</code></pre>
+<pre><code>##                                                                                             sysname 
+##                                                                                            &quot;Darwin&quot; 
+##                                                                                             release 
+##                                                                                            &quot;23.6.0&quot; 
+##                                                                                             version 
+## &quot;Darwin Kernel Version 23.6.0: Mon Jul 29 21:13:00 PDT 2024; root:xnu-10063.141.2~1/RELEASE_X86_64&quot;</code></pre>
 <pre class="r"><code>sessionInfo()</code></pre>
-<pre><code>## R version 4.4.1 (2024-06-14 ucrt)
-## Platform: x86_64-w64-mingw32/x64
-## Running under: Windows 11 x64 (build 22631)
+<pre><code>## R version 4.4.1 (2024-06-14)
+## Platform: x86_64-apple-darwin20
+## Running under: macOS Sonoma 14.6.1
 ## 
 ## Matrix products: default
-## 
+## BLAS:   /Library/Frameworks/R.framework/Versions/4.4-x86_64/Resources/lib/libRblas.0.dylib 
+## LAPACK: /Library/Frameworks/R.framework/Versions/4.4-x86_64/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.0
 ## 
 ## locale:
-## [1] LC_COLLATE=English_United Kingdom.utf8 
-## [2] LC_CTYPE=English_United Kingdom.utf8   
-## [3] LC_MONETARY=English_United Kingdom.utf8
-## [4] LC_NUMERIC=C                           
-## [5] LC_TIME=English_United Kingdom.utf8    
+## [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
 ## 
 ## time zone: Europe/London
 ## tzcode source: internal
@@ -1065,16 +1089,17 @@ nhb1a$OutgroupIndex_z &lt;- scale(nhb1a$OutgroupIndex)</code></pre>
 ## [1] stats     graphics  grDevices utils     datasets  methods   base     
 ## 
 ## other attached packages:
-## [1] dplyr_1.1.4
+## [1] knitr_1.49  dplyr_1.1.4
 ## 
 ## loaded via a namespace (and not attached):
-##  [1] digest_0.6.37     R6_2.5.1          fastmap_1.2.0     tidyselect_1.2.1 
-##  [5] xfun_0.47         magrittr_2.0.3    glue_1.7.0        cachem_1.1.0     
-##  [9] tibble_3.2.1      knitr_1.48        pkgconfig_2.0.3   htmltools_0.5.8.1
-## [13] generics_0.1.3    rmarkdown_2.28    lifecycle_1.0.4   cli_3.6.3        
-## [17] vctrs_0.6.5       sass_0.4.9        jquerylib_0.1.4   compiler_4.4.1   
-## [21] rstudioapi_0.17.1 tools_4.4.1       pillar_1.10.1     evaluate_1.0.0   
-## [25] bslib_0.9.0       yaml_2.3.10       rlang_1.1.4       jsonlite_1.8.8</code></pre>
+##  [1] vctrs_0.6.5       cli_3.6.3         rlang_1.1.4       xfun_0.49        
+##  [5] generics_0.1.3    jsonlite_1.8.9    glue_1.8.0        htmltools_0.5.8.1
+##  [9] sass_0.4.9        fansi_1.0.6       rmarkdown_2.29    evaluate_1.0.1   
+## [13] jquerylib_0.1.4   tibble_3.2.1      fastmap_1.2.0     yaml_2.3.10      
+## [17] lifecycle_1.0.4   compiler_4.4.1    pkgconfig_2.0.3   rstudioapi_0.19.0
+## [21] digest_0.6.37     R6_2.5.1          tidyselect_1.2.1  utf8_1.2.4       
+## [25] pillar_1.9.0      magrittr_2.0.3    bslib_0.8.0       tools_4.4.1      
+## [29] cachem_1.1.0</code></pre>
 </div>
 
 

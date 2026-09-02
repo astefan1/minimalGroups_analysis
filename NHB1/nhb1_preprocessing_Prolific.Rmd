@@ -8,6 +8,7 @@ output: html_document
 
 ```{r setup}
 library(dplyr)
+library(knitr)
 ```
 
 ## Read in dataset
@@ -54,11 +55,17 @@ nhb1a <- nhb1a[, ! colnames(nhb1a) %in% c("IPAddress",
 
 ```{r}
 ssbefore <- nrow(nhb1a)
+exclGroups <- nhb1a[nhb1a$skyColor != 'purple', "condition"]
 nhb1a <- nhb1a[nhb1a$skyColor == 'purple', ]
 ssafter <- nrow(nhb1a)
 ```
 
-We recruited `r ssbefore` participants on Prolific. `r ssbefore-ssafter` participants were excluded because they failed the attention check. The remaining sample size of `r ssafter` corresponds to the preregistered sample size.
+We recruited `r ssbefore` participants on Prolific. `r ssbefore-ssafter` participants were excluded because they failed the attention check. The remaining sample size of `r ssafter` corresponds to the preregistered sample size. The distribution of participants who failed the attention check across experimental groups (0 = Underestimator, 1 = Overestimator) was:
+
+```{r}
+kable(table(exclGroups), col.names = c("Group", "Frequency"))
+```
+
 
 ## Check if people correctly assigned themselves to their group
 
