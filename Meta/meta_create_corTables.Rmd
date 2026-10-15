@@ -1,0 +1,51 @@
+---
+title: "Correlation Tables"
+author: "Angelika Stefan"
+date: "2026-10-15"
+output: pdf_document
+header-includes:
+   - \usepackage[singlelinecheck=false]{caption}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(kableExtra)
+```
+
+The following tables display the Pearson correlations between ingroup bias and ideology in all conditions in all studies. This is the raw data for the meta-analysis reported in the main manuscript, where these correlations were transformed to Fisher's $z$.
+
+
+```{r echo=FALSE}
+# Read data
+
+nhbmeta <- read.csv('../../data/metadata_processed.csv')
+
+# Create tables
+
+kable(nhbmeta[, c("study", "group", colnames(nhbmeta)[grep("cor_Bias", colnames(nhbmeta))])],
+      digits = 2, 
+      caption = "Correlation between Bias (combined measure) and Ideology", 
+      col.names = c("Study", "Group", "Bias ~ Ideology", "Bias ~ Self-Reported Ideology", "Bias ~ Issue-Based Ideology")) %>% kable_styling(position = "left")
+
+kable(nhbmeta[, c("study", "group", colnames(nhbmeta)[grep("cor_Traits", colnames(nhbmeta))])],
+      digits = 2, 
+      caption = "Correlation between Bias (Traits) and Ideology", 
+      col.names = c("Study", "Group", "Bias ~ Ideology", "Bias ~ Self-Reported Ideology", "Bias ~ Issue-Based Ideology")) %>% kable_styling(position = "left")
+```
+
+\newpage
+
+```{r echo=FALSE}
+kable(nhbmeta[, c("study", "group", colnames(nhbmeta)[grep("cor_Points", colnames(nhbmeta))])],
+            digits = 2, 
+      caption = "Correlation between Bias (Tajfel Points) and Ideology", 
+      col.names = c("Study", "Group", "Bias ~ Ideology", "Bias ~ Self-Reported Ideology", "Bias ~ Issue-Based Ideology")) %>% kable_styling(position = "left")
+
+kable(nhbmeta[, c("study", "group", colnames(nhbmeta)[grep("cor_Identify", colnames(nhbmeta))])],
+            digits = 2, 
+      caption = "Correlation between Bias (Identification) and Ideology", 
+      col.names = c("Study", "Group", "Bias ~ Ideology", "Bias ~ Self-Reported Ideology", "Bias ~ Issue-Based Ideology")) %>% kable_styling(position = "left")
+
+```
+
