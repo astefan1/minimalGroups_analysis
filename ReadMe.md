@@ -59,7 +59,7 @@ The analyses assume the following folder structure:
 8. Run exploratory analysis script with suffix 'extremity'. This reproduces exploratory results for the influence of ideological extremity on intergroup bias. Due to the inadequate internal consistency of the composite bias measure, analyses were not only conducted using the composite bias measure, but also the individual bias measures (identification, Tajfel matrix points, traits).
 9. Run exploratory analysis script with suffix 'interaction-ideology-extremity'. This reproduces exploratory results regarding the interaction effect of ideology and ideological extremity on intergroup bias. Due to the inadequate internal consistency of the composite bias measure, analyses were not only conducted using the composite bias measure, but also the individual bias measures (identification, Tajfel matrix points, traits).
 10. Run script 'nhb1_plot_asymmetry.Rmd' to generate the scatterplot depicting the relation between ideology and bias in both platforms.
-11. Run script 'nhb1_exploratory_noprereg_demographicControls.Rmd' to re-run all analyses from point 4 (confirmatory analyses) while controlling for demographic variables (age, gender, education, ethnicity)
+11. Run script 'nhb1\_exploratory\_noprereg\_demographicControls.Rmd' to re-run all analyses from point 4 (confirmatory analyses) while controlling for demographic variables (age, gender, education, ethnicity)
 
 ### Study 2
 1. Open folder :file_folder: NHB2
@@ -69,7 +69,8 @@ The analyses assume the following folder structure:
 5. Run exploratory analysis script with suffix 'extremity'. This reproduces exploratory results for the influence of ideological extremity on intergroup bias.
 6. Run exploratory analysis scripts with suffix '...-as-DV'. These reproduce results from step 3 using ingroup-vs-outgroup identification, points, and traits as DV. Analyses were conducted because internal consistency of composite bias measure was inadequate.
 7. Run script 'nhb2_plot_asymmetry.Rmd' to generate the scatterplot depicting the relation between ideology and bias in both platforms.
-8. Run script 'nhb2_exploratory_noprereg_mediation-robustness.Rmd' for sensitivity analyses of confirmatory parallel mediation analysis
+8. Run script 'nhb2_exploratory\_noprereg\_mediation-robustness.Rmd' for sensitivity analyses of confirmatory parallel mediation analysis
+9. Run script 'nhb2_exploratory\_noprereg\_demographicControls.Rmd' to re-run all analyses from point 3 (confirmatory analyses) while controlling for demographic variables (age, gender, education, ethnicity)
 
 ### Study 3
 1. Open folder :file_folder: NHB3
@@ -79,14 +80,14 @@ The analyses assume the following folder structure:
 5. Run exploratory analysis script with suffix 'extremity'. This reproduces exploratory results for the influence of ideological extremity on intergroup bias.
 6. Run exploratory analysis scripts with suffix '...-as-DV'. These reproduce results from step 3 using ingroup-vs-outgroup identification, points, and traits as DV. Analyses were conducted because internal consistency of composite bias measure was inadequate.
 7. Run script 'nhb3_plot_asymmetry.Rmd' to generate the scatterplot depicting the relation between ideology and bias in both platforms.
-8. Run script 'nhb3_exploratory_noprereg_favoritism-and-derogation-separately.Rmd' to compute the non-preregistered exploratory analysis testing the condition effect for ingroup favoritism and outgroup derogation separately.
+8. Run script 'nhb3_exploratory\_noprereg\_favoritism-and-derogation-separately.Rmd' to compute the non-preregistered exploratory analysis testing the condition effect for ingroup favoritism and outgroup derogation separately.
 
 ### Analyses across all studies
 1. Open folder :file_folder: Meta
 2. Run preprocessing script. This creates the dataset that serves as an input for the internal mini-meta analysis.
-3. Run script 'meta_descriptives.Rmd'. This creates descriptive statistics for demographic information (e.g., age, gender, education) as well as core variables used in confirmatory hypothesis testing (e.g., composite bias). 
-4. Run script 'meta_create_corTables.Rmd' to generate Pearson correlation tables. These are presented in the appendix.
-5. Run script 'meta_confirmatory.Rmd'. This reproduces the results of the mini-meta analysis as well as the multilevel analysis across all studies and conditions. Note that reproducing the Bayesian multilevel analysis can take a long time (~ 8 hours on a regular PC). To speed things up, decrease number of iterations per chain or spread chains across multiple cores.
-6. Run script 'meta_exploratory_self-reported-vs-issue-based-ideology.Rmd'. This reproduces the average effect size calculations across different definitions of the independent variable (self-reported, issue-based ideology) and bias (combined score, Tajfel matrix points, group identification ratings, group trait evaluation ratings).
-7. Run script 'meta_plot_minimeta.Rmd' to generate the forest plot depicting the relation between ideology and bias across studies and conditions.
-8. Run script 'meta_plot_multimeta.Rmd' to generate the forest plot depicting meta-analytic ideological asymmetry effect across different measures of ideology (issue-based vs self-reported) and bias (traits/points/identification/combined measure)
+3. Run script 'meta\_descriptives.Rmd'. This creates descriptive statistics for demographic information (e.g., age, gender, education) as well as core variables used in confirmatory hypothesis testing (e.g., composite bias). 
+4. Run script 'meta\_create\_corTables.Rmd' to generate Pearson correlation tables. These are presented in the appendix.
+5. Run script 'meta\_confirmatory.Rmd'. This reproduces the results of the mini-meta analysis as well as the multilevel analysis across all studies and conditions. Note that reproducing the Bayesian multilevel analysis can take a long time (~ 8 hours on a regular PC). To speed things up, decrease number of iterations per chain or spread chains across multiple cores.
+6. Run script 'meta\_exploratory_self-reported-vs-issue-based-ideology.Rmd'. This reproduces the average effect size calculations across different definitions of the independent variable (self-reported, issue-based ideology) and bias (combined score, Tajfel matrix points, group identification ratings, group trait evaluation ratings).
+7. Run script 'meta\_plot\_minimeta.Rmd' to generate the forest plot depicting the relation between ideology and bias across studies and conditions.
+8. Run script 'meta\_plot\_multimeta.Rmd' to generate the forest plot depicting meta-analytic ideological asymmetry effect across different measures of ideology (issue-based vs self-reported) and bias (traits/points/identification/combined measure)
