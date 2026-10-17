@@ -81,6 +81,7 @@ The analyses assume the following folder structure:
 6. Run exploratory analysis scripts with suffix '...-as-DV'. These reproduce results from step 3 using ingroup-vs-outgroup identification, points, and traits as DV. Analyses were conducted because internal consistency of composite bias measure was inadequate.
 7. Run script 'nhb3_plot_asymmetry.Rmd' to generate the scatterplot depicting the relation between ideology and bias in both platforms.
 8. Run script 'nhb3_exploratory\_noprereg\_favoritism-and-derogation-separately.Rmd' to compute the non-preregistered exploratory analysis testing the condition effect for ingroup favoritism and outgroup derogation separately.
+9. Run script 'nhb3_exploratory\_noprereg\_demographicControls.Rmd' to re-run all analyses from point 3 (confirmatory analyses) while controlling for demographic variables (age, gender, education, ethnicity)
 
 ### Analyses across all studies
 1. Open folder :file_folder: Meta
