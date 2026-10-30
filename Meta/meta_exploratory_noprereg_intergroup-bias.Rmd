@@ -1,0 +1,184 @@
+---
+title: "Intergroup Bias"
+author: "Angelika Stefan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(reshape2)
+library(dplyr)
+library(ggplot2)
+library(BayesFactor)
+library(patchwork)
+library(knitr)
+library(kableExtra)
+```
+
+In the following, we present exploratory, non-preregistered analyses of intergroup bias. Intergroup bias is the outcome variable in all analyses, and we assume that, typically, participants should prefer their ingroup over the outgroup. Here, we test whether the intergroup bias is present in all studies.
+
+## Read in data
+
+```{r}
+nhb1a <- read.csv('../../data/nhb1a_processed.csv')
+nhb1b <- read.csv('../../data/nhb1b_processed.csv')
+nhb2 <- read.csv('../../data/nhb2_processed.csv')
+nhb3 <- read.csv('../../data/nhb3_processed.csv')
+```
+
+## Write functions
+
+```{r}
+
+# Analyze ingroup-outgroup effects for Tajfel points
+analyze_inout_points <- function(data, title){
+  
+  inout <- melt(data, 
+              id.vars = "X", 
+              measure.vars = c("total_ingroup_points", "total_outgroup_points"),
+              variable.name = "Group", value.name = "Points")
+  
+  inout$Group <- recode_values(inout$Group,
+              "total_ingroup_points" ~ "Ingroup",
+              "total_outgroup_points" ~ "Outgroup")
+  
+  p <- ggplot(inout, mapping = aes(x = Group, y = Points)) +
+    geom_boxplot() +
+    theme_bw() +
+    labs(title = title)
+  
+  freqtest <- t.test(data$total_ingroup_minus_outgroup_points, alternative = "greater")
+  bayestest <- ttestBF(data$total_ingroup_minus_outgroup_points, nullInterval = c(0, Inf))
+  
+  return(list(p=p, freqtest=freqtest, bayestest=bayestest))
+}
+
+# Analyze ingroup-outgroup effects for positive traits
+analyze_inout_traits <- function(data, title){
+  
+  inout <- melt(data, 
+              id.vars = "X", 
+              measure.vars = c("mean_ingroup_traits_positive", "mean_outgroup_traits_positive"),
+              variable.name = "Group", value.name = "Traits")
+  
+  inout$Group <- recode_values(inout$Group,
+              "mean_ingroup_traits_positive" ~ "Ingroup",
+              "mean_outgroup_traits_positive" ~ "Outgroup")
+  
+  p <- ggplot(inout, mapping = aes(x = Group, y = Traits)) +
+    geom_boxplot() +
+    theme_bw() +
+    labs(title = title)
+  
+  freqtest <- t.test(data$ingroup_minus_outgroup_traits_positive, alternative = "greater")
+  bayestest <- ttestBF(na.omit(data$ingroup_minus_outgroup_traits_positive), nullInterval = c(0, Inf))
+  
+  return(list(p=p, freqtest=freqtest, bayestest=bayestest))
+}
+
+# Analyze ingroup-outgroup effects for identification
+
+analyze_inout_ident <- function(data, title){
+  
+  inout <- melt(data, 
+              id.vars = "X", 
+              measure.vars = c("IngroupIdentify", "OutgroupIdentify"),
+              variable.name = "Group", value.name = "Identification")
+  
+  inout$Group <- recode_values(inout$Group,
+              "IngroupIdentify" ~ "Ingroup",
+              "OutgroupIdentify" ~ "Outgroup")
+  
+  p <- ggplot(inout, mapping = aes(x = Group, y = Identification)) +
+    geom_boxplot() +
+    theme_bw() +
+    labs(title = title)
+  
+  freqtest <- t.test(data$ingroup_minus_outgroup_identify, alternative = "greater")
+  bayestest <- ttestBF(na.omit(data$ingroup_minus_outgroup_identify), nullInterval = c(0, Inf))
+  
+  return(list(p=p, freqtest=freqtest, bayestest=bayestest))
+}
+
+```
+
+
+## Ingroup and Outgroup Points
+
+```{r}
+# Calculate results
+inout_NHB1a <- analyze_inout_points(nhb1a, "Study 1: Prolific")
+inout_NHB1b <- analyze_inout_points(nhb1b, "Study 1: MTurk")
+inout_NHB2 <- analyze_inout_points(nhb2, "Study 2")
+inout_NHB3 <- analyze_inout_points(nhb3, "Study 3")
+
+# Plot
+(inout_NHB1a$p + inout_NHB1b$p)/(inout_NHB2$p + inout_NHB3$p)
+
+# Hypothesis testing results
+testres <- matrix(c(inout_NHB1a$freqtest$p.value, extractBF(inout_NHB1a$bayestest)$bf[1],
+                    inout_NHB1b$freqtest$p.value, extractBF(inout_NHB1b$bayestest)$bf[1],
+                    inout_NHB2$freqtest$p.value, extractBF(inout_NHB2$bayestest)$bf[1],
+                    inout_NHB3$freqtest$p.value, extractBF(inout_NHB3$bayestest)$bf[1]),
+                  nrow = 4, ncol = 2, byrow = TRUE)
+rownames(testres) <- c("Study 1 (Prolific)", "Study 1 (MTurk)", "Study 3", "Study 4")
+
+kable(testres, 
+      row.names = TRUE,
+      col.names = c("p-value", "Bayes factor"),
+      digits = 3) %>% kable_styling(position = "left")
+```
+
+## Ingroup and Outgroup Traits
+
+```{r}
+# Calculate results
+inout_NHB1a <- analyze_inout_traits(nhb1a, "Study 1: Prolific")
+inout_NHB1b <- analyze_inout_traits(nhb1b, "Study 1: MTurk")
+inout_NHB2 <- analyze_inout_traits(nhb2, "Study 2")
+inout_NHB3 <- analyze_inout_traits(nhb3, "Study 3")
+
+# Plot
+suppressWarnings((inout_NHB1a$p + inout_NHB1b$p)/(inout_NHB2$p + inout_NHB3$p))
+
+# Hypothesis testing results
+testres <- matrix(c(inout_NHB1a$freqtest$p.value, extractBF(inout_NHB1a$bayestest)$bf[1],
+                    inout_NHB1b$freqtest$p.value, extractBF(inout_NHB1b$bayestest)$bf[1],
+                    inout_NHB2$freqtest$p.value, extractBF(inout_NHB2$bayestest)$bf[1],
+                    inout_NHB3$freqtest$p.value, extractBF(inout_NHB3$bayestest)$bf[1]),
+                  nrow = 4, ncol = 2, byrow = TRUE)
+rownames(testres) <- c("Study 1 (Prolific)", "Study 1 (MTurk)", "Study 3", "Study 4")
+
+kable(testres, 
+      row.names = TRUE,
+      col.names = c("p-value", "Bayes factor"),
+      digits = 3) %>% kable_styling(position = "left")
+```
+
+# Ingroup and Outgroup Identification
+
+```{r}
+# Calculate results
+inout_NHB1a <- analyze_inout_ident(nhb1a, "Study 1: Prolific")
+inout_NHB1b <- analyze_inout_ident(nhb1b, "Study 1: MTurk")
+inout_NHB2 <- analyze_inout_ident(nhb2, "Study 2")
+inout_NHB3 <- analyze_inout_ident(nhb3, "Study 3")
+
+# Plot
+(inout_NHB1a$p + inout_NHB1b$p)/(inout_NHB2$p + inout_NHB3$p)
+
+# Hypothesis testing results
+testres <- matrix(c(inout_NHB1a$freqtest$p.value, extractBF(inout_NHB1a$bayestest)$bf[1],
+                    inout_NHB1b$freqtest$p.value, extractBF(inout_NHB1b$bayestest)$bf[1],
+                    inout_NHB2$freqtest$p.value, extractBF(inout_NHB2$bayestest)$bf[1],
+                    inout_NHB3$freqtest$p.value, extractBF(inout_NHB3$bayestest)$bf[1]),
+                  nrow = 4, ncol = 2, byrow = TRUE)
+rownames(testres) <- c("Study 1 (Prolific)", "Study 1 (MTurk)", "Study 3", "Study 4")
+
+kable(testres, 
+      row.names = TRUE,
+      col.names = c("p-value", "Bayes factor"),
+      digits = 3) %>% kable_styling(position = "left")
+```
+

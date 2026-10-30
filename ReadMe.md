@@ -3,7 +3,7 @@
 ## Project description
 The divide between political liberals and conservatives is rapidly growing. Several influential theories contend that this divide hinges on orientations towards social groups, such that conservatives (versus liberals) show a greater tendency to favor their “ingroups” and discriminate against “outgroups”. However, other theories contend that liberals and conservatives do not differ in their degree of intergroup bias. Both perspectives have received empirical support, and the debate has reached a standstill. We argue that this theoretical and empirical stalemate stems from inherent limitations of examining attitudes towards real-world social groups—a strategy used by both sides of the debate. Drawing on social identity theory, we conducted a series of four studies (Total N = 4064) using “minimal groups” (i.e., experimentally constructed groups) to determine whether and why ideological differences in intergroup bias may exist.
 
-The project was accepted as a Stage 1 registered report at Nature Human Behaviour. This repository contains the analysis code for all analyses conducted as part of the project. The ReadMe describes the logic of the analysis code.
+The project was accepted as a Stage 2 registered report at Nature Human Behaviour. This repository contains the analysis code for all analyses conducted as part of the project. The ReadMe describes the logic of the analysis code.
 
 ## File naming conventions
 All analysis scripts are R Markdown and html files prefixed with the name of the dataset (NHB1 for Studies 1a and 1b, NHB2 for Study 2, NHB3 for Study 3). The prefix is followed by an indicator of the type of analysis that is conducted in the script:
@@ -77,7 +77,7 @@ The analyses assume the following folder structure:
 2. Run preprocessing script. This creates preprocessed data saved in the data folder.
 3. Run script 'nhb3\_confirmatory.Rmd'. This produces the main confirmatory hypothesis testing results that were included in the design table of the Stage 1 registered report.
 4. Run reliability analysis script. This computes the internal consistency of all scales and combined measures.
-5. Run exploratory analysis script with suffix 'extremity'. This reproduces exploratory results for the influence of ideological extremity on intergroup bias.
+5. Run exploratory analysis scripts with suffix 'extremity'. This reproduces exploratory results for the influence of ideological extremity on intergroup bias.
 6. Run exploratory analysis scripts with suffix '...-as-DV'. These reproduce results from step 3 using ingroup-vs-outgroup identification, points, and traits as DV. Analyses were conducted because internal consistency of composite bias measure was inadequate.
 7. Run script 'nhb3_plot_asymmetry.Rmd' to generate the scatterplot depicting the relation between ideology and bias in both platforms.
 8. Run script 'nhb3_exploratory\_noprereg\_favoritism-and-derogation-separately.Rmd' to compute the non-preregistered exploratory analysis testing the condition effect for ingroup favoritism and outgroup derogation separately.
@@ -92,3 +92,4 @@ The analyses assume the following folder structure:
 6. Run script 'meta\_exploratory_self-reported-vs-issue-based-ideology.Rmd'. This reproduces the average effect size calculations across different definitions of the independent variable (self-reported, issue-based ideology) and bias (combined score, Tajfel matrix points, group identification ratings, group trait evaluation ratings).
 7. Run script 'meta\_plot\_minimeta.Rmd' to generate the forest plot depicting the relation between ideology and bias across studies and conditions.
 8. Run script 'meta\_plot\_multimeta.Rmd' to generate the forest plot depicting meta-analytic ideological asymmetry effect across different measures of ideology (issue-based vs self-reported) and bias (traits/points/identification/combined measure)
+9. Run script 'meta\_exploratory_noprereg_intergroup_bias.Rmd' to analyze whether the intergroup bias (i.e., people prefer their ingroup over the outgroup) exists in all studies. These analyses are presented in the appendix.
