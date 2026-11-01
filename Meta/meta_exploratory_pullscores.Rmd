@@ -1,0 +1,176 @@
+---
+title: "Pull Score Analysis"
+author: "Angelika Stefan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reshape2)
+library(ggplot2)
+library(BayesFactor)
+library(knitr)
+```
+
+In the following, we present exploratory analyses of pull scores. We did not specify how we would analyze pull scores in the Stage 1 report, so, here, we present descriptive statistics and predict pull scores from ideology.
+
+There are six different pull scores:
+
+- FAV on MJP
+- MJP on FAV
+- MD on Profit
+- Profit on MD
+- FAV on P
+- P on FAV
+
+## Read in data
+
+```{r}
+nhb1a <- read.csv('../../data/nhb1a_processed.csv')
+nhb1b <- read.csv('../../data/nhb1b_processed.csv')
+nhb2 <- read.csv('../../data/nhb2_processed.csv')
+nhb3 <- read.csv('../../data/nhb3_processed.csv')
+```
+
+## Write functions 
+
+```{r}
+plot_pullscores <- function(data, title){
+  pull_scores <- c("Pull_FAVonMJP", "Pull_MJPonFAV", "Pull_MDonProfit", 
+                   "Pull_ProfitonMD", "Pull_FAVonP", "Pull_PonFAV")
+  datLong <- melt(data, 
+              id.vars = "X", 
+              measure.vars = pull_scores,
+              variable.name = "Factor", value.name = "Pull")
+  ggplot(datLong, mapping = aes(x = Pull)) +
+    geom_bar(stat = "count") +
+    facet_wrap(vars(Factor)) +
+    theme_bw() +
+    labs(title = title)
+}
+
+analyze_pullscores1 <- function(data){
+  pull_scores <- c("Pull_FAVonMJP", "Pull_MJPonFAV", "Pull_MDonProfit", 
+                   "Pull_ProfitonMD", "Pull_FAVonP", "Pull_PonFAV")
+  datLong <- melt(data, 
+                  id.vars = "X", 
+                  measure.vars = pull_scores,
+                  variable.name = "Factor", value.name = "Pull")
+  
+  MEANS <- tapply(datLong$Pull, datLong$Factor, mean, na.rm=TRUE)
+  SDS <- tapply(datLong$Pull, datLong$Factor, sd, na.rm=TRUE)
+  
+  freqres <- matrix(NA, nrow=6, ncol=4)
+  bfs <- rep(NA, 6)
+  
+  for(i in 1:6){
+    formula <- as.formula(paste(pull_scores[i], "~ composite_political_orientation_z"))
+    freqres[i,] <- summary(
+      lm(formula, data))$coefficients["composite_political_orientation_z",]
+    bfs[i] <- extractBF(lmBF(formula, data = data))$bf
+  }
+  
+  res <- data.frame(Mean_Score = MEANS,
+                    SD_Score = SDS,
+                    beta = freqres[,1],
+                    p_value = freqres[,4],
+                    bf = bfs)
+  res
+}
+
+analyze_pullscores2 <- function(data){
+  pull_scores <- c("Pull_FAVonMJP", "Pull_MJPonFAV", "Pull_MDonProfit", 
+                   "Pull_ProfitonMD", "Pull_FAVonP", "Pull_PonFAV")
+  conditions <- unique(data$condition)
+  datLong <- melt(data, 
+                  id.vars = c("X", "condition"), 
+                  measure.vars = pull_scores,
+                  variable.name = "Factor", value.name = "Pull")
+  
+  MEANS <- matrix(NA, ncol=length(conditions), nrow=6)
+  SDS <- matrix(NA, ncol=length(conditions), nrow=6)
+  
+  for(i in seq_along(conditions)){
+    datLongCondition <- datLong[datLong$condition== conditions[i], ]
+    MEANS[,i] <- tapply(datLongCondition$Pull, datLongCondition$Factor, mean, na.rm=TRUE)
+    SDS[,i] <- tapply(datLongCondition$Pull, datLongCondition$Factor, sd, na.rm=TRUE)
+  }
+  
+  freqres <- array(NA, dim=c(length(conditions), 6,4))
+  bfs <- matrix(NA, nrow=6, ncol = length(conditions))
+  
+  for(c in seq_along(conditions)){
+    datCondition <- data[data$condition == conditions[c], ]
+    for(i in 1:6){
+      formula <- as.formula(paste(pull_scores[i], "~ composite_political_orientation_z"))
+      freqres[c, i,] <- summary(
+        lm(formula, datCondition))$coefficients["composite_political_orientation_z",]
+      bfs[i, c] <- extractBF(lmBF(formula, data = datCondition))$bf
+    }
+  }
+  
+  res <- vector("list", length(conditions))
+  
+  for(c in seq_along(conditions)){
+    res[[c]] <- data.frame(Mean_Score = MEANS[,c],
+                    SD_Score = SDS[,c],
+                    beta = freqres[c, ,1],
+                    p_value = freqres[c, ,4],
+                    bf = bfs[,c])
+    rownames(res[[c]]) <- pull_scores
+  }
+  
+  names(res) <- conditions
+  
+  return(res)
+}
+
+```
+
+## Study 1a (Prolific)
+
+```{r}
+plot_pullscores(nhb1a, "Study 1a (Prolific)")
+res <- analyze_pullscores1(nhb1a)
+kable(res, digits = 3, row.names = TRUE, caption = "Study 1a (Prolific)")
+```
+
+## Study 1b (MTurk)
+
+```{r}
+plot_pullscores(nhb1a, "Study 1b (MTurk)")
+res <- analyze_pullscores1(nhb1b)
+kable(res, digits = 3, row.names = TRUE, caption = "Study 1b (MTurk)")
+```
+## Study 2 
+
+```{r}
+plot_pullscores(nhb2[nhb2$condition == "volitional",], "Study 2: Volitional Condition")
+plot_pullscores(nhb2[nhb2$condition == "attitude",], "Study 2: Attitude Condition")
+plot_pullscores(nhb2[nhb2$condition == "random",], "Study 2: Random Condition")
+
+res <- analyze_pullscores2(nhb2)
+conditions <- unique(nhb2$condition)
+kable(res[[1]], digits = 3, row.names = TRUE, caption = paste("Study 2:", conditions[1]))
+kable(res[[2]], digits = 3, row.names = TRUE, caption = paste("Study 2:", conditions[2]))
+kable(res[[3]], digits = 3, row.names = TRUE, caption = paste("Study 2:", conditions[3]))
+
+```
+
+## Study 3
+
+```{r}
+plot_pullscores(nhb3[nhb3$condition == "competitive",], "Study 2: Competitive Condition")
+plot_pullscores(nhb3[nhb3$condition == "no_interaction",], "Study 2: No Interaction Condition")
+plot_pullscores(nhb3[nhb3$condition == "cooperative",], "Study 2: Cooperative Condition")
+
+res <- analyze_pullscores2(nhb3)
+conditions <- unique(nhb3$condition)
+kable(res[[1]], digits = 3, row.names = TRUE, caption = paste("Study 2:", conditions[1]))
+kable(res[[2]], digits = 3, row.names = TRUE, caption = paste("Study 2:", conditions[2]))
+kable(res[[3]], digits = 3, row.names = TRUE, caption = paste("Study 2:", conditions[3]))
+
+```
+
+
